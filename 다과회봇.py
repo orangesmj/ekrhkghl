@@ -6,8 +6,8 @@ from datetime import datetime
 import json
 import os
 import re
+access_token = os.environ["BOT_TOKEN"]
 
-TOKEN = "MTI3OTQ3MzExNjQxMzk1NjE2Nw.GgnMGv.ClWS5Sq-pi2v9e6z4xK3Dx5eTWlYw1ONDwTOos"
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
 
 # 봇의 인텐트를 설정합니다. 모든 필요한 인텐트를 활성화합니다.
@@ -423,4 +423,4 @@ async def check_nickname(interaction: discord.Interaction, user: discord.Member)
         await interaction.response.send_message(f"{user.mention}의 닉네임 변경 기록이 없습니다.", ephemeral=True)
 
 # 봇 실행
-bot.run(TOKEN)
+bot.run(access_token)
