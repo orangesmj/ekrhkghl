@@ -6,7 +6,9 @@ from datetime import datetime
 import json
 import os
 import re
-access_token = os.environ["BOT_TOKEN"]
+
+# 환경 변수에서 Discord 봇 토큰을 가져옵니다.
+TOKEN = os.environ["BOT_TOKEN"]
 
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
 
@@ -93,10 +95,6 @@ async def on_ready():
     if channel:
         await channel.send('봇이 활성화되었습니다!')
 
-    # 닉네임 변경 및 가입 양식 작성 버튼 항상 활성화
-    await send_nickname_button(bot.get_channel(Ch_3))
-    await send_join_form_button(bot.get_channel(Ch_2))
-
 # 주기적으로 메시지 삭제
 @tasks.loop(hours=1)
 async def delete_messages():
@@ -109,12 +107,23 @@ async def delete_messages():
 
 @tasks.loop(minutes=5)
 async def delete_messages_2():
-    channel = bot.get_channel(Ch_3)  # 메시지를 삭제할 채널
-    if channel:
-        async for message in channel.history(limit=100):  # 최근 100개의 메시지를 가져옵니다
-            if message.id != MS_2:  # 특정 메시지를 제외하고
-                await message.delete()  # 메시지를 삭제합니다
-                print(f'Deleted message from {message.author.display_name} with content: {message.content}')
+    # 닉네임 변경 채널에서 닉네임 변경 버튼 삭제 및 재생성
+    nickname_channel = bot.get_channel(Ch_3)
+    if nickname_channel:
+        async for message in nickname_channel.history(limit=100):
+            if message.id != MS_2 and message.author == bot.user:
+                await message.delete()
+                print(f"Deleted old nickname change button message from {message.author.display_name}")
+        await send_nickname_button(nickname_channel)
+    
+    # 가입 양식 채널에서 가입 양식 버튼 삭제 및 재생성
+    join_form_channel = bot.get_channel(Ch_2)
+    if join_form_channel:
+        async for message in join_form_channel.history(limit=100):
+            if message.id != MS_1 and message.author == bot.user:
+                await message.delete()
+                print(f"Deleted old join form button message from {message.author.display_name}")
+        await send_join_form_button(join_form_channel)
 
 # 역할 부여 및 제거 처리 함수
 async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji, role_id):
@@ -423,4 +432,4 @@ async def check_nickname(interaction: discord.Interaction, user: discord.Member)
         await interaction.response.send_message(f"{user.mention}의 닉네임 변경 기록이 없습니다.", ephemeral=True)
 
 # 봇 실행
-bot.run(access_token)
+bot.run(TOKEN)
