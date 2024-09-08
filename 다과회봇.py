@@ -8,16 +8,25 @@ import os
 import re
 
 # 환경 변수에서 Discord 봇 토큰을 가져옵니다.
-TOKEN = os.environ["BOT_TOKEN"]
-
+TOKEN = "BOT_TOKEN"
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
+ban_log = "ban_list.json"  # 차단된 사용자 정보를 저장할 파일 이름
+entry_log = "입장내용.json"  # 입장 정보를 저장할 파일 이름
+exit_log = "퇴장내용.json"  # 퇴장 정보를 저장할 파일 이름
 
 # 봇의 인텐트를 설정합니다. 모든 필요한 인텐트를 활성화합니다.
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.members = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 닉네임 변경 기록을 저장할 딕셔너리 (사용자 ID를 키로 하고 닉네임과 날짜의 목록을 값으로 저장)
+# 닉네임 변경 기록 및 입장/퇴장 기록을 저장할 딕셔너리
 nickname_history = {}
+ban_list = {}
+entry_list = {}  # 입장 기록을 저장할 딕셔너리
+exit_list = {}  # 퇴장 기록을 저장할 딕셔너리
+
+# 관리자 역할 ID 설정 (변수 ad1)
+ad1 = 1264012076997808308  # 운영팀 역할 ID
 
 # 역할 및 채널 ID 변수 설정
 Ch_1 = 1264567815340298281  # 입장가이드 채널 변수
@@ -43,7 +52,6 @@ Emoji_2 = "✅"  # 라소소 이모지 변수
 Role_5 = 1264571068874756149  # 라소소 역할 변수
 
 Nick_ch = 1281830606476410920  # 닉네임 변경 로그 채널 ID
-ad1 = 1264012076997808308  # 운영자 역할ID 변수
 open_channel_id = 1281629317402460161  # 서버 켜지면 알람 뜰 채널
 
 # 삭제된 메시지를 기록할 로그 채널 ID
@@ -60,28 +68,58 @@ def load_nickname_history():
     if os.path.exists(Nick_Log):
         with open(Nick_Log, 'r', encoding='utf-8') as file:
             nickname_history = json.load(file)
-            # JSON 파일에서 날짜 형식을 문자열로 저장하기 때문에 튜플 형식으로 변환
             nickname_history = {int(k): [(n, d) for n, d in v] for k, v in nickname_history.items()}
+
+# JSON 파일에서 차단 목록 불러오기
+def load_ban_list():
+    global ban_list
+    if os.path.exists(ban_log):
+        with open(ban_log, 'r', encoding='utf-8') as file:
+            ban_list = json.load(file)
+            ban_list = {int(k): v for k, v in ban_list.items()}
+
+# JSON 파일에서 입장 기록 불러오기
+def load_entry_list():
+    global entry_list
+    if os.path.exists(entry_log):
+        with open(entry_log, 'r', encoding='utf-8') as file:
+            entry_list = json.load(file)
+
+# JSON 파일에서 퇴장 기록 불러오기
+def load_exit_list():
+    global exit_list
+    if os.path.exists(exit_log):
+        with open(exit_log, 'r', encoding='utf-8') as file:
+            exit_list = json.load(file)
 
 # 닉네임 변경 기록을 JSON 파일에 저장하기
 def save_nickname_history():
     with open(Nick_Log, 'w', encoding='utf-8') as file:
         json.dump(nickname_history, file, ensure_ascii=False, indent=4)
 
-# 현재 서버에서 중복된 닉네임을 찾는 함수 (대소문자 구별 없이 검사)
-def is_duplicate_nickname(new_nickname, guild):
-    for member in guild.members:
-        if member.display_name.lower() == new_nickname.lower():
-            return True
-    return False
+# 입장 기록을 JSON 파일에 저장하기
+def save_entry_list():
+    with open(entry_log, 'w', encoding='utf-8') as file:
+        json.dump(entry_list, file, ensure_ascii=False, indent=4)
+
+# 퇴장 기록을 JSON 파일에 저장하기
+def save_exit_list():
+    with open(exit_log, 'w', encoding='utf-8') as file:
+        json.dump(exit_list, file, ensure_ascii=False, indent=4)
+
+# 차단 목록을 JSON 파일에 저장하기
+def save_ban_list():
+    with open(ban_log, 'w', encoding='utf-8') as file:
+        json.dump(ban_list, file, ensure_ascii=False, indent=4)
 
 # 봇이 준비되었을 때 실행되는 이벤트
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
     load_nickname_history()  # 닉네임 변경 기록 불러오기
-    
-    # 슬래시 명령어를 Discord 서버에 동기화합니다.
+    load_ban_list()  # 차단 목록 불러오기
+    load_entry_list()  # 입장 기록 불러오기
+    load_exit_list()  # 퇴장 기록 불러오기
     try:
         await bot.tree.sync()
         print("슬래시 명령어가 동기화되었습니다.")
@@ -95,6 +133,60 @@ async def on_ready():
     if channel:
         await channel.send('봇이 활성화되었습니다!')
 
+# 사용자가 서버에 들어왔을 때 실행되는 이벤트
+@bot.event
+async def on_member_join(member):
+    user_id = str(member.id)
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # 사용자 입장 기록 추가
+    entry_list[user_id] = {
+        "nickname": member.display_name,
+        "last_join": current_time,
+        "join_count": entry_list.get(user_id, {}).get("join_count", 0) + 1
+    }
+    save_entry_list()  # 입장 기록 저장
+
+    # 2번 이상 입장한 경우 관리자에게 DM 전송
+    if entry_list[user_id]["join_count"] > 1:
+        last_nickname, last_date = nickname_history.get(int(user_id), [(member.display_name, '기록 없음')])[-1]
+        
+        # 관리자 역할을 가진 멤버들에게 DM 전송
+        for guild_member in member.guild.members:
+            if ad1 in [role.id for role in guild_member.roles]:
+                try:
+                    await guild_member.send(
+                        f"ID: {member.id}가 다시 입장했습니다. "
+                        f"퇴장 전 마지막 닉네임: '{last_nickname}' (변경일: {last_date})"
+                    )
+                except discord.Forbidden:
+                    print(f"DM을 보낼 수 없습니다: {guild_member.display_name}")
+
+# 사용자가 서버에서 나갔을 때 실행되는 이벤트
+@bot.event
+async def on_member_remove(member):
+    user_id = str(member.id)
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # 사용자 퇴장 기록 추가
+    exit_list[user_id] = {
+        "nickname": member.display_name,
+        "last_leave": current_time,
+        "leave_count": exit_list.get(user_id, {}).get("leave_count", 0) + 1
+    }
+    save_exit_list()  # 퇴장 기록 저장
+
+# 사용자의 닉네임이 변경될 때 실행되는 이벤트
+@bot.event
+async def on_member_update(before, after):
+    # 닉네임이 변경되었을 때만 처리
+    if before.display_name != after.display_name:
+        change_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if after.id not in nickname_history:
+            nickname_history[after.id] = []
+        nickname_history[after.id].append((before.display_name, change_date))
+        save_nickname_history()  # 닉네임 변경 기록을 파일에 저장
+
 # 주기적으로 메시지 삭제
 @tasks.loop(hours=1)
 async def delete_messages():
@@ -105,7 +197,7 @@ async def delete_messages():
                 await message.delete()  # 메시지를 삭제합니다
                 print(f'Deleted message from {message.author.display_name} with content: {message.content}')
 
-@tasks.loop(minutes=5)
+@tasks.loop(hours=1)
 async def delete_messages_2():
     # 닉네임 변경 채널에서 닉네임 변경 버튼 삭제 및 재생성
     nickname_channel = bot.get_channel(Ch_3)
@@ -412,24 +504,74 @@ async def send_nickname_button(channel):
     # 닉네임 변경 버튼을 채널에 전송 (버튼이 사라지지 않도록 유지)
     await channel.send("닉네임 변경 버튼이 활성화되었습니다.", view=view, delete_after=None)
 
-# /조회 슬래시 커맨드
-@bot.tree.command(name="조회", description="조회할 유저를 선택하여 닉네임 변경 전 닉네임들과 변경 날짜를 확인합니다.")
-@app_commands.describe(user="조회할 유저를 선택하세요.")
-async def check_nickname(interaction: discord.Interaction, user: discord.Member):
-    # 조회 명령어 사용자가 ad1 역할을 가지고 있는지 확인
+# /차단 슬래시 커맨드 정의
+@bot.tree.command(name="차단", description="서버에서 사용자를 차단합니다.")
+@app_commands.describe(user="차단할 사용자를 선택하세요.", reason="차단 사유를 입력하세요.")
+async def ban_user(interaction: discord.Interaction, user: discord.User, reason: str = "사유 없음"):
+    # ad1 역할을 가지고 있는지 확인
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
-    
-    # 선택된 유저의 닉네임 변경 기록을 확인합니다.
-    nicknames = nickname_history.get(user.id)
-    if nicknames:
-        # 닉네임과 날짜를 함께 출력
-        nickname_list = "\n".join([f"{nick} (변경일: {date})" for nick, date in nicknames])
-        await interaction.response.send_message(f"{user.mention}의 이전 닉네임 목록:\n{nickname_list}", ephemeral=True)
+
+    guild = interaction.guild
+    try:
+        # 선택된 사용자를 차단
+        await guild.ban(user, reason=reason)
+        # 차단된 사용자 정보 기록
+        ban_list[user.id] = {"nickname": user.name, "reason": reason}
+        save_ban_list()
+        await interaction.response.send_message(f"사용자 {user.mention}가 차단되었습니다. 사유: {reason}")
+    except discord.Forbidden:
+        await interaction.response.send_message("차단할 권한이 없습니다.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"차단 중 오류가 발생했습니다: {e}", ephemeral=True)
+
+# /차단목록 슬래시 커맨드 정의
+@bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
+async def ban_list_command(interaction: discord.Interaction):
+    # ad1 역할을 가지고 있는지 확인
+    admin_role = interaction.guild.get_role(ad1)
+    if admin_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        return
+
+    # 차단된 사용자 목록 출력
+    if ban_list:
+        ban_info = "\n".join([f"ID: {user_id}, 별명: {info['nickname']}, 사유: {info['reason']}" for user_id, info in ban_list.items()])
+        await interaction.response.send_message(f"차단된 사용자 목록:\n{ban_info}", ephemeral=True)
     else:
-        await interaction.response.send_message(f"{user.mention}의 닉네임 변경 기록이 없습니다.", ephemeral=True)
+        await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
+
+# /차단해제 슬래시 커맨드 정의
+@bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
+@app_commands.describe(nickname="차단 해제할 사용자의 별명을 입력하세요.")
+async def unban_user(interaction: discord.Interaction, nickname: str):
+    # ad1 역할을 가지고 있는지 확인
+    admin_role = interaction.guild.get_role(ad1)
+    if admin_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    try:
+        # 별명으로 차단 목록 검색
+        user_id = next((uid for uid, info in ban_list.items() if info['nickname'] == nickname), None)
+        if user_id:
+            user = await bot.fetch_user(int(user_id))
+            await guild.unban(user)
+            # 차단 목록에서 제거
+            del ban_list[int(user_id)]
+            save_ban_list()
+            await interaction.response.send_message(f"사용자 {user.mention}의 차단이 해제되었습니다.")
+        else:
+            await interaction.response.send_message("차단 목록에 없는 사용자입니다.", ephemeral=True)
+    except discord.NotFound:
+        await interaction.response.send_message("해당 별명을 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("차단 해제할 권한이 없습니다.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
 
 # 봇 실행
 bot.run(TOKEN)
