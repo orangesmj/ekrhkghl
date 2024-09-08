@@ -8,7 +8,7 @@ import os
 import re
 
 # 환경 변수에서 Discord 봇 토큰을 가져옵니다.
-TOKEN = "BOT_TOKEN"
+TOKEN = os.environ.get("BOT_TOKEN")
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
 ban_log = "ban_list.json"  # 차단된 사용자 정보를 저장할 파일 이름
 entry_log = "입장내용.json"  # 입장 정보를 저장할 파일 이름
