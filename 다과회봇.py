@@ -7,7 +7,7 @@ import json
 import os
 import re
 
-# 환경 변수에서 Discord 봇 토큰을 가져옵니다.   
+# 환경 변수에서 Discord 봇 토큰을 가져옵니다.
 TOKEN = os.environ.get("BOT_TOKEN")
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
 ban_log = "ban_list.json"  # 차단된 사용자 정보를 저장할 파일 이름
@@ -417,6 +417,7 @@ async def send_join_form_button(channel):
 
     # 버튼 클릭 시 모달 창을 띄우는 콜백 함수
     async def button_callback(interaction):
+        await interaction.response.defer(ephemeral=True)  # 응답 지연 처리 추가
         await interaction.response.send_modal(JoinFormModal(interaction.user))
 
     button.callback = button_callback
@@ -509,6 +510,7 @@ async def send_nickname_button(channel):
 
     # 버튼 클릭 시 모달 창을 띄우는 콜백 함수
     async def button_callback(interaction):
+        await interaction.response.defer(ephemeral=True)  # 응답 지연 처리 추가
         await interaction.response.send_modal(NicknameChangeModal(interaction.user))
 
     button.callback = button_callback
@@ -560,9 +562,14 @@ async def ban_list_command(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
-# /차단해제 슬래시 커맨드 정의 (별명으로 차단 해제 후 목록 표시)
-@bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
-@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 입력하세요.")
+# /차단해제 명령어에 사용될 선택지 함수
+async def get_ban_choices():
+    # ban_list에서 마지막 별명으로 차단된 사용자들을 choices로 변환
+    return [app_commands.Choice(name=info['last_nickname'], value=str(user_id)) for user_id, info in ban_list.items()]
+
+# /차단해제 명령어 정의
+@bot.tree.command(name="차단해제", description="서버에 기록된 마지막 별명을 선택하여 차단을 해제합니다.")
+@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 선택하세요.")
 async def unban_user(interaction: discord.Interaction, nickname: str):
     # ad1 역할을 가지고 있는지 확인
     admin_role = interaction.guild.get_role(ad1)
@@ -570,28 +577,27 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
-    # 별명으로 차단된 사용자를 검색
-    user_id = next((uid for uid, info in ban_list.items() if info.get('last_nickname') == nickname), None)
+    # 사용 가능한 choices 가져오기
+    choices = await get_ban_choices()
 
-    if not user_id:
+    # nickname이 선택한 값 중에 있는지 확인
+    selected_user = next((choice for choice in choices if choice.value == nickname), None)
+
+    if not selected_user:
         await interaction.response.send_message("해당 별명을 가진 차단된 사용자를 찾을 수 없습니다.", ephemeral=True)
-        
-        # 차단 해제 실패 시에도 현재 차단된 사용자 목록을 표시
-        await show_ban_list(interaction)
         return
+
+    # 선택된 사용자를 차단 목록에서 찾기
+    user_id = int(selected_user.value)
 
     guild = interaction.guild
     try:
-        user = await bot.fetch_user(int(user_id))
+        user = await bot.fetch_user(user_id)
         await guild.unban(user)
-        # 차단 목록에서 제거
-        del ban_list[int(user_id)]
+        # 차단 목록에서 사용자 제거
+        del ban_list[user_id]
         save_ban_list()
-        await interaction.response.send_message(f"사용자 {nickname}의 차단이 해제되었습니다.")
-
-        # 차단 해제 후 자동으로 차단 목록 표시
-        await show_ban_list(interaction)
-
+        await interaction.response.send_message(f"사용자 {selected_user.name}의 차단이 해제되었습니다.")
     except discord.NotFound:
         await interaction.response.send_message("해당 ID를 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
     except discord.Forbidden:
