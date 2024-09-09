@@ -22,43 +22,51 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # 닉네임 변경 기록 및 입장/퇴장 기록을 저장할 딕셔너리
 nickname_history = {}
 ban_list = {}
-entry_list = {}  # 입장 기록을 저장할 딕셔너리
-exit_list = {}  # 퇴장 기록을 저장할 딕셔너리
+entry_list = {}
+exit_list = {}
 
 # 관리자 역할 ID 설정 (변수 ad1)
-ad1 = 1264012076997808308  # 운영자 역할 ID 변수
+ad1 = 1264012076997808308
 
 # 역할 및 채널 ID 변수 설정
-Ch_1 = 1264567815340298281  # 입장가이드 채널 변수
-Me_1 = 1281651525529374760  # 내 ID 메세지 변수
-Emoji_1 = "✅"  # 입장가이드 이모지 변수
-Role_1 = 1281601086142021772  # 입장가이드 역할 변수
-Ch_2 = 1267706085763190818  # 가입양식 채널 변수
-Role_2 = 1281606443551686676  # 가입양식 완료 후 부여되는 역할 변수
-move_ch = 1264567865227346004  # 가입양식 > 가입보관소로 이동되는 변수
-MS_1 = 1281606690952708216  # 내 글을 제외한 모든 글 삭제를 1시간 주기의 특정 ID
-Ch_3 = 1263829979398017159  # 닉네임변경 채널 변수
-Man = 1043194155515519048  # 남 역할 이모지
-Woman = 1043891312384024576  # 여 역할 이모지
-Sex = ['💙', '❤️']  # 역할 부여에 사용되는 이모지들
-MS_2 = 1281654298500927635  # 닉네임 변경 양식에 내 고정글
-Role_4 = 1264571068874756149  # 닉변완료 부여 역할
-Nick_ch = 1281830606476410920  # 닉네임 변경 로그 채널 ID
-open_channel_id = 1281629317402460161  # 서버 켜지면 알람 뜰 채널
-Rec = 1267642384108486656  # 삭제된 메시지를 기록할 로그 채널 ID
+Ch_1 = 1264567815340298281
+Me_1 = 1281651525529374760
+Emoji_1 = "✅"
+Role_1 = 1281601086142021772
+Ch_2 = 1267706085763190818
+Role_2 = 1281606443551686676
+move_ch = 1264567865227346004
+MS_1 = 1281606690952708216
+Ch_3 = 1263829979398017159
+Man = 1043194155515519048
+Woman = 1043891312384024576
+Sex = ['💙', '❤️']
+MS_2 = 1281654298500927635
+Role_4 = 1264571068874756149
+Ch_4 = 1264567815340298281
+Me_2 = 1281667957076000769
+Emoji_2 = "✅"
+Role_5 = 1264571068874756149
+Nick_ch = 1281830606476410920
+open_channel_id = 1281629317402460161
+Rec = 1267642384108486656
 
 # 가입 양식 메시지를 검증하기 위한 정규 표현식 정의
-REQUIRED_REGEX = re.compile(
-    r"동의여부\s*:\s*.*\n동의일자\s*:\s*.*", re.MULTILINE
-)
+REQUIRED_REGEX = re.compile(r"동의여부\s*:\s*.*\n동의일자\s*:\s*.*", re.MULTILINE)
 
-# JSON 파일 로드 및 저장 함수
+# JSON 파일에서 데이터 불러오기 및 저장 함수 정의
 def load_nickname_history():
     global nickname_history
     if os.path.exists(Nick_Log):
         with open(Nick_Log, 'r', encoding='utf-8') as file:
             nickname_history = json.load(file)
             nickname_history = {int(k): [(n, d) for n, d in v] for k, v in nickname_history.items()}
+            print(f"[DEBUG] 닉네임 변경 기록 불러옴: {nickname_history}")
+
+def save_nickname_history():
+    with open(Nick_Log, 'w', encoding='utf-8') as file:
+        json.dump(nickname_history, file, ensure_ascii=False, indent=4)
+        print(f"[DEBUG] 닉네임 변경 기록 저장됨: {nickname_history}")
 
 def load_ban_list():
     global ban_list
@@ -66,42 +74,38 @@ def load_ban_list():
         with open(ban_log, 'r', encoding='utf-8') as file:
             ban_list = json.load(file)
             ban_list = {int(k): v for k, v in ban_list.items()}
+            print(f"[DEBUG] 차단 목록 불러옴: {ban_list}")
+    else:
+        print("[DEBUG] 차단 목록 파일이 존재하지 않습니다.")
+
+def save_ban_list():
+    with open(ban_log, 'w', encoding='utf-8') as file:
+        json.dump(ban_list, file, ensure_ascii=False, indent=4)
+        print(f"[DEBUG] 차단 목록 저장됨: {ban_list}")
 
 def load_entry_list():
     global entry_list
     if os.path.exists(entry_log):
         with open(entry_log, 'r', encoding='utf-8') as file:
             entry_list = json.load(file)
+            print(f"[DEBUG] 입장 기록 불러옴: {entry_list}")
+
+def save_entry_list():
+    with open(entry_log, 'w', encoding='utf-8') as file:
+        json.dump(entry_list, file, ensure_ascii=False, indent=4)
+        print(f"[DEBUG] 입장 기록 저장됨: {entry_list}")
 
 def load_exit_list():
     global exit_list
     if os.path.exists(exit_log):
         with open(exit_log, 'r', encoding='utf-8') as file:
             exit_list = json.load(file)
-
-def save_nickname_history():
-    with open(Nick_Log, 'w', encoding='utf-8') as file:
-        json.dump(nickname_history, file, ensure_ascii=False, indent=4)
-
-def save_entry_list():
-    with open(entry_log, 'w', encoding='utf-8') as file:
-        json.dump(entry_list, file, ensure_ascii=False, indent=4)
+            print(f"[DEBUG] 퇴장 기록 불러옴: {exit_list}")
 
 def save_exit_list():
     with open(exit_log, 'w', encoding='utf-8') as file:
         json.dump(exit_list, file, ensure_ascii=False, indent=4)
-
-def save_ban_list():
-    with open(ban_log, 'w', encoding='utf-8') as file:
-        json.dump(ban_list, file, ensure_ascii=False, indent=4)
-
-# 닉네임 중복 확인 함수
-def is_duplicate_nickname(nickname, guild):
-    normalized_nickname = nickname.lower()
-    for member in guild.members:
-        if member.display_name.lower() == normalized_nickname:
-            return True
-    return False
+        print(f"[DEBUG] 퇴장 기록 저장됨: {exit_list}")
 
 # 봇이 준비되었을 때 실행되는 이벤트
 @bot.event
@@ -117,14 +121,13 @@ async def on_ready():
     except Exception as e:
         print(f"명령어 동기화 중 오류 발생: {e}")
 
-    # 주기적인 메시지 삭제 작업 시작
     delete_messages.start()
     delete_messages_2.start()
     channel = bot.get_channel(open_channel_id)
     if channel:
         await channel.send('봇이 활성화되었습니다!')
 
-# 사용자 입장 기록
+# 입장 및 퇴장 이벤트 처리
 @bot.event
 async def on_member_join(member):
     user_id = str(member.id)
@@ -148,7 +151,6 @@ async def on_member_join(member):
                 except discord.Forbidden:
                     print(f"DM을 보낼 수 없습니다: {guild_member.display_name}")
 
-# 사용자 퇴장 기록
 @bot.event
 async def on_member_remove(member):
     user_id = str(member.id)
@@ -174,7 +176,7 @@ async def on_member_update(before, after):
         nickname_history[after.id].append((before.display_name, change_date))
         save_nickname_history()
 
-# 메시지 주기적 삭제
+# 주기적으로 메시지 삭제
 @tasks.loop(hours=1)
 async def delete_messages():
     channel = bot.get_channel(Ch_2)
@@ -201,6 +203,95 @@ async def delete_messages_2():
                 await message.delete()
                 print(f"Deleted old join form button message from {message.author.display_name}")
         await send_join_form_button(join_form_channel)
+
+# 리액션을 통한 역할 부여 및 제거
+async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji, role_id):
+    if payload.channel_id != channel_id or payload.message_id != message_id:
+        return
+
+    guild = bot.get_guild(payload.guild_id)
+    member = guild.get_member(payload.user_id)
+
+    if member is None or member.bot:
+        return
+
+    if str(payload.emoji) == emoji:
+        role = guild.get_role(role_id)
+        if role:
+            try:
+                if add_role:
+                    await member.add_roles(role)
+                    await member.send(f"{role.name} 역할이 부여되었습니다!")
+                    channel = bot.get_channel(channel_id)
+                    message = await channel.fetch_message(message_id)
+                    await message.remove_reaction(emoji, member)
+            except Exception as e:
+                await member.send(f"역할 부여 중 오류 발생: {e}")
+
+@bot.event
+async def on_raw_reaction_add(payload):
+    await handle_reaction(payload, True, Ch_1, Me_1, Emoji_1, Role_1)
+
+    if payload.channel_id == Ch_4 and payload.message_id == Me_2 and str(payload.emoji) == Emoji_2:
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        if member:
+            role = guild.get_role(Role_5)
+            if role:
+                try:
+                    await member.add_roles(role)
+                    await member.send(f"{role.name} 역할이 부여되었습니다!")
+                    print(f'{role.name} 역할이 {member.display_name}에게 부여되었습니다.')
+                    channel = bot.get_channel(payload.channel_id)
+                    message = await channel.fetch_message(payload.message_id)
+                    await message.remove_reaction(payload.emoji, member)
+                except discord.Forbidden:
+                    await member.send("권한이 없어 역할을 부여할 수 없습니다.")
+                except discord.HTTPException as e:
+                    await member.send(f"역할 부여 중 오류 발생: {e}")
+
+    if payload.channel_id == Ch_3 and str(payload.emoji) in Sex:
+        guild = bot.get_guild(payload.guild_id)
+        member = guild.get_member(payload.user_id)
+        if member:
+            selected_role = guild.get_role(Man if str(payload.emoji) == '💙' else Woman)
+            opposite_role = guild.get_role(Woman if str(payload.emoji) == '💙' else Man)
+            if selected_role:
+                try:
+                    await member.add_roles(selected_role)
+                    await member.send(f'{selected_role.name} 역할이 부여되었습니다.')
+                    if opposite_role in member.roles:
+                        await member.remove_roles(opposite_role)
+                        await member.send(f'{opposite_role.name} 역할이 제거되었습니다.')
+                    channel = bot.get_channel(payload.channel_id)
+                    message = await channel.fetch_message(payload.message_id)
+                    await message.remove_reaction(payload.emoji, member)
+                except Exception as e:
+                    await member.send(f"역할 부여 오류: {e}")
+
+# 메시지 삭제 시 로그 기록
+@bot.event
+async def on_message_delete(message):
+    if message.channel.id in [Ch_2, Ch_3] or message.author.bot:
+        return
+
+    log_channel = bot.get_channel(Rec)
+    if log_channel:
+        try:
+            deleted_message = (
+                f"**삭제된 메시지**\n"
+                f"채널: {message.channel.mention}\n"
+                f"작성자: {message.author.mention}\n"
+                f"내용: {message.content}"
+            )
+            embed = discord.Embed(description=deleted_message, color=discord.Color.red())
+            embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
+            await log_channel.send(embed=embed)
+            print(f"로그 채널에 삭제된 메시지가 전송되었습니다: {message.content}")
+        except discord.HTTPException as e:
+            print(f"메시지 삭제 기록 중 오류 발생: {e}")
+    else:
+        print("로그 채널을 찾을 수 없습니다.")
 
 # 가입 양식 작성 모달 창
 class JoinFormModal(Modal):
@@ -261,19 +352,6 @@ class JoinFormModal(Modal):
 
         await interaction.user.send("가입 양식이 성공적으로 제출되었습니다!")
         await interaction.response.send_message("가입 양식이 성공적으로 제출되었습니다.", ephemeral=True)
-
-# 가입 양식 작성 버튼 관련 처리
-async def send_join_form_button(channel):
-    button = Button(label="가입 양식 작성", style=discord.ButtonStyle.primary)
-
-    async def button_callback(interaction):
-        await interaction.response.send_modal(JoinFormModal(interaction.user))
-
-    button.callback = button_callback
-    view = View()
-    view.add_item(button)
-
-    await channel.send("가입 양식 작성 버튼이 활성화되었습니다.", view=view, delete_after=None)
 
 # 닉네임 변경 모달 창
 class NicknameChangeModal(Modal):
@@ -345,20 +423,26 @@ class NicknameChangeModal(Modal):
             embed.add_field(name="변경된 닉네임", value=new_nickname, inline=False)
             await nick_log_channel.send(embed=embed)
 
-# 닉네임 변경 버튼 관련 처리
-async def send_nickname_button(channel):
-    button = Button(label="닉네임 변경", style=discord.ButtonStyle.primary)
-
+# 모달 및 버튼 처리 함수
+async def send_join_form_button(channel):
+    button = Button(label="가입 양식 작성", style=discord.ButtonStyle.primary)
     async def button_callback(interaction):
-        await interaction.response.send_modal(NicknameChangeModal(interaction.user))
-
+        await interaction.response.send_modal(JoinFormModal(interaction.user))
     button.callback = button_callback
     view = View()
     view.add_item(button)
+    await channel.send("가입 양식 작성 버튼이 활성화되었습니다.", view=view, delete_after=None)
 
+async def send_nickname_button(channel):
+    button = Button(label="닉네임 변경", style=discord.ButtonStyle.primary)
+    async def button_callback(interaction):
+        await interaction.response.send_modal(NicknameChangeModal(interaction.user))
+    button.callback = button_callback
+    view = View()
+    view.add_item(button)
     await channel.send("닉네임 변경 버튼이 활성화되었습니다.", view=view, delete_after=None)
 
-# /차단 슬래시 커맨드 정의
+# /차단, /차단목록, /차단해제 슬래시 명령어 정의
 @bot.tree.command(name="차단", description="서버에서 사용자를 차단합니다.")
 @app_commands.describe(user="차단할 사용자를 선택하세요.", reason="차단 사유를 입력하세요.")
 async def ban_user(interaction: discord.Interaction, user: discord.User, reason: str = "사유 없음"):
@@ -378,7 +462,6 @@ async def ban_user(interaction: discord.Interaction, user: discord.User, reason:
     except Exception as e:
         await interaction.response.send_message(f"차단 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# /차단목록 슬래시 커맨드 정의 (마지막 별명 표시)
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     admin_role = interaction.guild.get_role(ad1)
@@ -395,31 +478,29 @@ async def ban_list_command(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
-# /차단해제 슬래시 커맨드 정의 (마지막 별명으로 차단 해제)
-@bot.tree.command(name="차단해제", description="서버에 기록된 마지막 별명을 선택하여 차단을 해제합니다.")
-@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 선택하세요.")
+@bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
+@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 입력하세요.")
 async def unban_user(interaction: discord.Interaction, nickname: str):
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
-    choices = await get_ban_choices()
-    selected_user = next((choice for choice in choices if choice.value == nickname), None)
+    user_id = next((uid for uid, info in ban_list.items() if info.get('last_nickname') == nickname), None)
 
-    if not selected_user:
+    if not user_id:
         await interaction.response.send_message("해당 별명을 가진 차단된 사용자를 찾을 수 없습니다.", ephemeral=True)
+        await show_ban_list(interaction)
         return
-
-    user_id = int(selected_user.value)
 
     guild = interaction.guild
     try:
-        user = await bot.fetch_user(user_id)
+        user = await bot.fetch_user(int(user_id))
         await guild.unban(user)
-        del ban_list[user_id]
+        del ban_list[int(user_id)]
         save_ban_list()
-        await interaction.response.send_message(f"사용자 {selected_user.name}의 차단이 해제되었습니다.")
+        await interaction.response.send_message(f"사용자 {nickname}의 차단이 해제되었습니다.")
+        await show_ban_list(interaction)
     except discord.NotFound:
         await interaction.response.send_message("해당 ID를 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
     except discord.Forbidden:
@@ -437,6 +518,14 @@ async def show_ban_list(interaction: discord.Interaction):
         await interaction.followup.send(f"현재 차단된 사용자 목록:\n{ban_info}", ephemeral=True)
     else:
         await interaction.followup.send("현재 차단된 사용자가 없습니다.", ephemeral=True)
+
+# 닉네임 중복 확인 함수
+def is_duplicate_nickname(nickname, guild):
+    normalized_nickname = nickname.lower()
+    for member in guild.members:
+        if member.display_name.lower() == normalized_nickname:
+            return True
+    return False
 
 # 봇 실행
 bot.run(TOKEN)
