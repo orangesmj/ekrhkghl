@@ -177,7 +177,7 @@ async def on_member_update(before, after):
         save_nickname_history()
 
 # 주기적으로 메시지 삭제
-@tasks.loop(hours=1)
+@tasks.loop(minutes=10)
 async def delete_messages():
     channel = bot.get_channel(Ch_2)
     if channel:
@@ -186,7 +186,7 @@ async def delete_messages():
                 await message.delete()
                 print(f'Deleted message from {message.author.display_name} with content: {message.content}')
 
-@tasks.loop(hours=1)
+@tasks.loop(minutes=10)
 async def delete_messages_2():
     nickname_channel = bot.get_channel(Ch_3)
     if nickname_channel:
