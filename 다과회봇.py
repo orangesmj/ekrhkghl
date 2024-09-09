@@ -1,13 +1,13 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from discord.ui import Button, View, Modal, TextInput
+from discord.ui import Button, View, Modal, TextInput, Select
 from datetime import datetime
 import json
 import os
 import re
 
-# 환경 변수에서 Discord 봇 토큰을 가져옵니다.
+# 환경 변수에서 Discord 봇 토큰을 가져옵니다.   
 TOKEN = os.environ.get("BOT_TOKEN")
 Nick_Log = "nickname_history.json"  # 닉네임 변경 기록을 저장할 파일 이름
 ban_log = "ban_list.json"  # 차단된 사용자 정보를 저장할 파일 이름
@@ -26,7 +26,7 @@ entry_list = {}  # 입장 기록을 저장할 딕셔너리
 exit_list = {}  # 퇴장 기록을 저장할 딕셔너리
 
 # 관리자 역할 ID 설정 (변수 ad1)
-ad1 = 1264012076997808308  # 운영팀 역할 ID
+ad1 = 1264012076997808308  # 운영자 역할 ID 변수
 
 # 역할 및 채널 ID 변수 설정
 Ch_1 = 1264567815340298281  # 입장가이드 채널 변수
@@ -112,6 +112,15 @@ def save_ban_list():
     with open(ban_log, 'w', encoding='utf-8') as file:
         json.dump(ban_list, file, ensure_ascii=False, indent=4)
 
+# 닉네임 중복 확인 함수 추가
+def is_duplicate_nickname(nickname, guild):
+    # 대소문자를 무시하고 중복 검사
+    normalized_nickname = nickname.lower()
+    for member in guild.members:
+        if member.display_name.lower() == normalized_nickname:
+            return True
+    return False
+
 # 봇이 준비되었을 때 실행되는 이벤트
 @bot.event
 async def on_ready():
@@ -157,24 +166,29 @@ async def on_member_join(member):
                 try:
                     await guild_member.send(
                         f"ID: {member.id}가 다시 입장했습니다. "
-                        f"퇴장 전 마지막 닉네임: '{last_nickname}' (변경일: {last_date})"
+                        f"퇴장 전 마지막 별명: '{last_nickname}' (변경일: {last_date})"
                     )
                 except discord.Forbidden:
                     print(f"DM을 보낼 수 없습니다: {guild_member.display_name}")
 
-# 사용자가 서버에서 나갔을 때 실행되는 이벤트
+# 사용자가 서버에서 나갔을 때 실행되는 이벤트 (마지막 별명 기록)
 @bot.event
 async def on_member_remove(member):
     user_id = str(member.id)
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # 사용자 퇴장 기록 추가
+    # 사용자 퇴장 기록 추가 및 마지막 별명 저장
     exit_list[user_id] = {
         "nickname": member.display_name,
         "last_leave": current_time,
         "leave_count": exit_list.get(user_id, {}).get("leave_count", 0) + 1
     }
     save_exit_list()  # 퇴장 기록 저장
+
+    # 차단 목록에 퇴장 전 마지막 별명 저장
+    if member.id in ban_list:
+        ban_list[member.id]['last_nickname'] = member.display_name
+        save_ban_list()
 
 # 사용자의 닉네임이 변경될 때 실행되는 이벤트
 @bot.event
@@ -527,7 +541,7 @@ async def ban_user(interaction: discord.Interaction, user: discord.User, reason:
     except Exception as e:
         await interaction.response.send_message(f"차단 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# /차단목록 슬래시 커맨드 정의
+# /차단목록 슬래시 커맨드 정의 (마지막 별명 표시)
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     # ad1 역할을 가지고 있는지 확인
@@ -538,14 +552,17 @@ async def ban_list_command(interaction: discord.Interaction):
 
     # 차단된 사용자 목록 출력
     if ban_list:
-        ban_info = "\n".join([f"ID: {user_id}, 별명: {info['nickname']}, 사유: {info['reason']}" for user_id, info in ban_list.items()])
+        ban_info = "\n".join(
+            [f"ID: {user_id}, 마지막 별명: {info.get('last_nickname', '기록 없음')}, 사유: {info['reason']}"
+             for user_id, info in ban_list.items()]
+        )
         await interaction.response.send_message(f"차단된 사용자 목록:\n{ban_info}", ephemeral=True)
     else:
         await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
-# /차단해제 슬래시 커맨드 정의
+# /차단해제 슬래시 커맨드 정의 (별명으로 차단 해제 후 목록 표시)
 @bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
-@app_commands.describe(nickname="차단 해제할 사용자의 별명을 입력하세요.")
+@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 입력하세요.")
 async def unban_user(interaction: discord.Interaction, nickname: str):
     # ad1 역할을 가지고 있는지 확인
     admin_role = interaction.guild.get_role(ad1)
@@ -553,25 +570,46 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
+    # 별명으로 차단된 사용자를 검색
+    user_id = next((uid for uid, info in ban_list.items() if info.get('last_nickname') == nickname), None)
+
+    if not user_id:
+        await interaction.response.send_message("해당 별명을 가진 차단된 사용자를 찾을 수 없습니다.", ephemeral=True)
+        
+        # 차단 해제 실패 시에도 현재 차단된 사용자 목록을 표시
+        await show_ban_list(interaction)
+        return
+
     guild = interaction.guild
     try:
-        # 별명으로 차단 목록 검색
-        user_id = next((uid for uid, info in ban_list.items() if info['nickname'] == nickname), None)
-        if user_id:
-            user = await bot.fetch_user(int(user_id))
-            await guild.unban(user)
-            # 차단 목록에서 제거
-            del ban_list[int(user_id)]
-            save_ban_list()
-            await interaction.response.send_message(f"사용자 {user.mention}의 차단이 해제되었습니다.")
-        else:
-            await interaction.response.send_message("차단 목록에 없는 사용자입니다.", ephemeral=True)
+        user = await bot.fetch_user(int(user_id))
+        await guild.unban(user)
+        # 차단 목록에서 제거
+        del ban_list[int(user_id)]
+        save_ban_list()
+        await interaction.response.send_message(f"사용자 {nickname}의 차단이 해제되었습니다.")
+
+        # 차단 해제 후 자동으로 차단 목록 표시
+        await show_ban_list(interaction)
+
     except discord.NotFound:
-        await interaction.response.send_message("해당 별명을 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
+        await interaction.response.send_message("해당 ID를 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message("차단 해제할 권한이 없습니다.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
+
+# 차단 목록 표시 함수
+async def show_ban_list(interaction: discord.Interaction):
+    # 차단된 사용자 목록 출력
+    if ban_list:
+        ban_info = "\n".join(
+            [f"ID: {user_id}, 마지막 별명: {info.get('last_nickname', '기록 없음')}, 사유: {info['reason']}"
+             for user_id, info in ban_list.items()]
+        )
+        await interaction.followup.send(f"현재 차단된 사용자 목록:\n{ban_info}", ephemeral=True)
+    else:
+        await interaction.followup.send("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
 # 봇 실행
 bot.run(TOKEN)
