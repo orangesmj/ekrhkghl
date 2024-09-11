@@ -281,21 +281,43 @@ async def on_message_delete(message):
     log_channel = bot.get_channel(Rec)
     if log_channel:
         try:
-            # 삭제된 메시지 정보를 기록할 임베드 생성
+            # 기본적으로 메시지 정보를 기록
             deleted_message = (
                 f"**삭제된 메시지**\n"
                 f"**채널**: {message.channel.mention}\n"
                 f"**작성자**: {message.author.mention}\n"
-                f"**내용**: {message.content or '메시지 내용이 없습니다.'}"  # 메시지 내용이 없을 경우를 대비한 처리
             )
+
+            # 메시지 내용 추가
+            if message.content:
+                deleted_message += f"**내용**: {message.content}\n"
+            else:
+                deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
+
+            # 첨부 파일이 있는 경우
+            if message.attachments:
+                attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
+                deleted_message += f"**첨부 파일**:\n{attachment_urls}\n"
+
+            # 임베드가 있는 경우
+            if message.embeds:
+                deleted_message += "**임베드가 포함되어 있습니다.**\n"
+
+            # 스티커가 있는 경우
+            if message.stickers:
+                sticker_urls = "\n".join([str(sticker) for sticker in message.stickers])
+                deleted_message += f"**스티커**:\n{sticker_urls}\n"
+
+            # 메시지 삭제 기록을 임베드로 전송
             embed = discord.Embed(description=deleted_message, color=discord.Color.red())
             embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
             await log_channel.send(embed=embed)
-            print(f"로그 채널에 삭제된 메시지가 전송되었습니다: {message.content}")
+            print(f"로그 채널에 삭제된 메시지가 전송되었습니다: {message.content or '내용 없음'}")
         except discord.HTTPException as e:
             print(f"메시지 삭제 기록 중 오류 발생: {e}")
     else:
         print("로그 채널을 찾을 수 없습니다.")
+
 
 
 # 가입 양식 작성 모달 창
