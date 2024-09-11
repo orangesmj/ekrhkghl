@@ -17,6 +17,9 @@ exit_log = "퇴장내용.json"  # 퇴장 정보를 저장할 파일 이름
 # 봇의 인텐트를 설정합니다. 모든 필요한 인텐트를 활성화합니다.
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True  # 메시지 콘텐츠 접근 허용
+intents.messages = True  # 메시지 관련 이벤트 허용
+intents.guilds = True  # 서버 관련 이벤트 허용
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # 닉네임 변경 기록 및 입장/퇴장 기록을 저장할 딕셔너리
@@ -270,29 +273,6 @@ async def on_raw_reaction_add(payload):
                     await member.send(f"역할 부여 오류: {e}")
 
 # 메시지 삭제 시 로그 기록
-
-import discord
-from discord.ext import commands
-
-# 봇의 인텐트를 설정합니다.
-intents = discord.Intents.default()
-intents.message_content = True  # 메시지 콘텐츠 접근 허용
-intents.messages = True  # 메시지 관련 이벤트 허용
-intents.guilds = True  # 서버 관련 이벤트 허용
-intents.members = True  # 멤버 관련 이벤트 허용
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-# 기존 변수와 채널 설정
-Rec = 1267642384108486656  # 로그 채널 ID
-Ch_2 = 1267706085763190818  # 예외 채널 1
-Ch_3 = 1263829979398017159  # 예외 채널 2
-
-# 봇이 준비되었을 때 실행되는 이벤트
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-
-# 메시지 삭제 시 로그 기록
 @bot.event
 async def on_message_delete(message):
     # 메시지가 봇이 작성한 것이거나, 특정 예외 채널에서 삭제된 경우 기록하지 않음
@@ -344,7 +324,6 @@ async def on_message_delete(message):
         print("로그 채널에 삭제된 메시지가 전송되었습니다.")
     except discord.HTTPException as e:
         print(f"메시지 삭제 기록 중 오류 발생: {e}")
-
 
 # 가입 양식 작성 모달 창
 class JoinFormModal(Modal):
@@ -582,3 +561,4 @@ def is_duplicate_nickname(nickname, guild):
 
 # 봇 실행
 bot.run(TOKEN)
+    
