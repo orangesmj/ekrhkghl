@@ -292,21 +292,22 @@ async def on_message_delete(message):
             if message.content:
                 deleted_message += f"**내용**: {message.content}\n"
             else:
-                deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
+                # 메시지 내용이 없을 경우 첨부 파일, 임베드, 스티커 등 확인
+                additional_content = []
+                if message.attachments:
+                    attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
+                    additional_content.append(f"**첨부 파일**:\n{attachment_urls}")
+                if message.embeds:
+                    additional_content.append("**임베드가 포함되어 있습니다.**")
+                if message.stickers:
+                    sticker_urls = "\n".join([sticker.name for sticker in message.stickers])
+                    additional_content.append(f"**스티커**: {sticker_urls}")
 
-            # 첨부 파일이 있는 경우
-            if message.attachments:
-                attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
-                deleted_message += f"**첨부 파일**:\n{attachment_urls}\n"
-
-            # 임베드가 있는 경우
-            if message.embeds:
-                deleted_message += "**임베드가 포함되어 있습니다.**\n"
-
-            # 스티커가 있는 경우
-            if message.stickers:
-                sticker_urls = "\n".join([str(sticker) for sticker in message.stickers])
-                deleted_message += f"**스티커**:\n{sticker_urls}\n"
+                # 추가 콘텐츠가 있다면 내용을 업데이트
+                if additional_content:
+                    deleted_message += "\n".join(additional_content)
+                else:
+                    deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
 
             # 메시지 삭제 기록을 임베드로 전송
             embed = discord.Embed(description=deleted_message, color=discord.Color.red())
@@ -317,6 +318,7 @@ async def on_message_delete(message):
             print(f"메시지 삭제 기록 중 오류 발생: {e}")
     else:
         print("로그 채널을 찾을 수 없습니다.")
+
 
 
 
