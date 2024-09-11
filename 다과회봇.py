@@ -270,19 +270,23 @@ async def on_raw_reaction_add(payload):
                     await member.send(f"역할 부여 오류: {e}")
 
 # 메시지 삭제 시 로그 기록
+
 @bot.event
 async def on_message_delete(message):
-    if message.channel.id in [Ch_2, Ch_3] or message.author.bot:
+    # 메시지가 봇이 작성한 것이거나, 특정 채널에서 삭제된 경우 기록하지 않음
+    if message.author.bot or message.channel.id in [Ch_2, Ch_3]:
         return
 
+    # 로그 채널 가져오기
     log_channel = bot.get_channel(Rec)
     if log_channel:
         try:
+            # 삭제된 메시지 정보를 기록할 임베드 생성
             deleted_message = (
                 f"**삭제된 메시지**\n"
-                f"채널: {message.channel.mention}\n"
-                f"작성자: {message.author.mention}\n"
-                f"내용: {message.content}"
+                f"**채널**: {message.channel.mention}\n"
+                f"**작성자**: {message.author.mention}\n"
+                f"**내용**: {message.content or '메시지 내용이 없습니다.'}"  # 메시지 내용이 없을 경우를 대비한 처리
             )
             embed = discord.Embed(description=deleted_message, color=discord.Color.red())
             embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
@@ -292,6 +296,7 @@ async def on_message_delete(message):
             print(f"메시지 삭제 기록 중 오류 발생: {e}")
     else:
         print("로그 채널을 찾을 수 없습니다.")
+
 
 # 가입 양식 작성 모달 창
 class JoinFormModal(Modal):
