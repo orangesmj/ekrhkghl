@@ -169,6 +169,39 @@ async def on_member_remove(member):
         ban_list[member.id]['last_nickname'] = member.display_name
         save_ban_list()
 
+# 서버 부스트 시 , 역할 자동 활성화
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    # 추가적인 초기화 코드가 여기에 올 수 있습니다.
+
+# 여기에 Nitro Boost 감지 핸들러를 추가하세요.
+@bot.event
+async def on_member_update(before, after):
+    # Nitro Boost 여부를 감지
+    if not before.premium_since and after.premium_since:
+        boost_role = after.guild.get_role(Boost)
+        if boost_role:
+            await after.add_roles(boost_role)
+            await after.send(f'서버 부스트 감사합니다! {boost_role.name} 역할이 부여되었습니다.')
+
+
+@bot.event
+async def on_member_remove(member):
+    user_id = str(member.id)
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    exit_list[user_id] = {
+        "nickname": member.display_name,
+        "last_leave": current_time,
+        "leave_count": exit_list.get(user_id, {}).get("leave_count", 0) + 1
+    }
+    save_exit_list()
+
+    if member.id in ban_list:
+        ban_list[member.id]['last_nickname'] = member.display_name
+        save_ban_list()
+
+
 # 닉네임 변경 기록
 @bot.event
 async def on_member_update(before, after):
