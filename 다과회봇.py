@@ -345,10 +345,14 @@ class JoinFormModal(Modal):
         nickname = self.nickname.value
         guild_name = self.guild_name.value
 
-        if "동의" not in agreement_text:
+        # 현재 날짜를 'YYYY-MM-DD' 형식으로 얻습니다.
+        today_date = datetime.now().strftime('%Y-%m-%d')
+
+        # 동의 여부와 날짜가 올바른지 검사
+        if "동의" not in agreement_text or agreement_date != today_date:
             await interaction.response.send_message(
-                "양식이 틀렸습니다. 동의여부에 동의, 동의일자에 오늘 날짜로 기재해주셔야 정상 이용 가능합니다. "
-                "팝업을 종료 후 다시 버튼을 눌러 다시 작성해주세요.",
+                "양식이 올바르지 않습니다. 닉네임 및 동의일자를 확실하게 기입해주세요.\n"
+                "예) 동의 일자 : YYYY-MM-DD",
                 ephemeral=True
             )
             return
