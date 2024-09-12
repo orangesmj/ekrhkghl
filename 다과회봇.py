@@ -171,12 +171,6 @@ async def on_member_remove(member):
 
 # 서버 부스트 시 , 역할 자동 활성화
 @bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user}')
-    # 추가적인 초기화 코드가 여기에 올 수 있습니다.
-
-# 여기에 Nitro Boost 감지 핸들러를 추가하세요.
-@bot.event
 async def on_member_update(before, after):
     # Nitro Boost 여부를 감지
     if not before.premium_since and after.premium_since:
