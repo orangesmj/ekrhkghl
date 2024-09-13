@@ -95,7 +95,7 @@ def save_nickname_history():
     for user_id, history in nickname_history.items():
         nickname_collection.update_one(
             {"_id": user_id},
-            {"$set": {"history": [{"nickname": n, "date": d} for n, d in history]}},
+            {"$set": {"history": [{"nickname": n, "date": d} for n, d in history], "last_nickname": history[-1][0]}},
             upsert=True,
         )
     print(f"[DEBUG] 닉네임 변경 기록 저장됨: {nickname_history}")
@@ -109,7 +109,11 @@ def load_ban_list():
 def save_ban_list():
     """MongoDB에 차단 목록을 저장합니다."""
     for user_id, data in ban_list.items():
-        ban_collection.update_one({"_id": user_id}, {"$set": {"data": data}}, upsert=True)
+        ban_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"data": data, "last_nickname": data.get('last_nickname', '기록 없음')}},
+            upsert=True
+        )
     print(f"[DEBUG] 차단 목록 저장됨: {ban_list}")
 
 def load_entry_list():
@@ -121,7 +125,11 @@ def load_entry_list():
 def save_entry_list():
     """MongoDB에 입장 기록을 저장합니다."""
     for user_id, data in entry_list.items():
-        entry_collection.update_one({"_id": user_id}, {"$set": {"data": data}}, upsert=True)
+        entry_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"data": data, "last_nickname": data["nickname"]}},
+            upsert=True
+        )
     print(f"[DEBUG] 입장 기록 저장됨: {entry_list}")
 
 def load_exit_list():
@@ -133,7 +141,11 @@ def load_exit_list():
 def save_exit_list():
     """MongoDB에 퇴장 기록을 저장합니다."""
     for user_id, data in exit_list.items():
-        exit_collection.update_one({"_id": user_id}, {"$set": {"data": data}}, upsert=True)
+        exit_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"data": data, "last_nickname": data["nickname"]}},
+            upsert=True
+        )
     print(f"[DEBUG] 퇴장 기록 저장됨: {exit_list}")
 
 # 봇이 준비되었을 때 실행되는 이벤트
