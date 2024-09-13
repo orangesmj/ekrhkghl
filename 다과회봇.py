@@ -162,7 +162,7 @@ async def on_ready():
 async def on_member_join(member):
     """사용자가 서버에 입장할 때 호출되는 함수입니다."""
     user_id = str(member.id)
-    current_time = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = get_kst_time()
     entry_list[user_id] = {
         "nickname": member.display_name,
         "last_join": current_time,
@@ -187,7 +187,7 @@ async def on_member_join(member):
 async def on_member_remove(member):
     """사용자가 서버에서 퇴장할 때 호출되는 함수입니다."""
     user_id = str(member.id)
-    current_time = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = get_kst_time()
     exit_list[user_id] = {
         "nickname": member.display_name,
         "last_leave": current_time,
@@ -213,7 +213,7 @@ async def on_member_update(before, after):
 
     # 닉네임 변경 기록
     if before.display_name != after.display_name:
-        change_date = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
+        change_date = get_kst_time()
         if after.id not in nickname_history:
             nickname_history[after.id] = []
         nickname_history[after.id].append((before.display_name, change_date))
@@ -477,7 +477,7 @@ class NicknameChangeModal(Modal):
             )
             return
 
-        change_date = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
+        change_date = get_kst_time()
         if self.member.id not in nickname_history:
             nickname_history[self.member.id] = []
         nickname_history[self.member.id].append((old_nick, change_date))
