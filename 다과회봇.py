@@ -8,6 +8,11 @@ import re
 from pymongo import MongoClient  # MongoDB 연결을 위한 패키지
 from pytz import timezone
 
+# 한국 표준 시간(KST)으로 현재 시간을 반환하는 함수
+def get_kst_time():
+    kst = timezone('Asia/Seoul')
+    return datetime.now(kst).strftime('%Y-%m-%d %H:%M:%S')
+
 # 환경 변수에서 Discord 봇 토큰을 가져옵니다.
 TOKEN = os.environ.get("BOT_TOKEN")  # Discord 봇 토큰을 환경 변수에서 가져옵니다.
 
@@ -157,7 +162,7 @@ async def on_ready():
 async def on_member_join(member):
     """사용자가 서버에 입장할 때 호출되는 함수입니다."""
     user_id = str(member.id)
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
     entry_list[user_id] = {
         "nickname": member.display_name,
         "last_join": current_time,
@@ -182,7 +187,7 @@ async def on_member_join(member):
 async def on_member_remove(member):
     """사용자가 서버에서 퇴장할 때 호출되는 함수입니다."""
     user_id = str(member.id)
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
     exit_list[user_id] = {
         "nickname": member.display_name,
         "last_leave": current_time,
@@ -208,7 +213,7 @@ async def on_member_update(before, after):
 
     # 닉네임 변경 기록
     if before.display_name != after.display_name:
-        change_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        change_date = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
         if after.id not in nickname_history:
             nickname_history[after.id] = []
         nickname_history[after.id].append((before.display_name, change_date))
@@ -472,7 +477,7 @@ class NicknameChangeModal(Modal):
             )
             return
 
-        change_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        change_date = get_kst_time().strftime('%Y-%m-%d %H:%M:%S')
         if self.member.id not in nickname_history:
             nickname_history[self.member.id] = []
         nickname_history[self.member.id].append((old_nick, change_date))
