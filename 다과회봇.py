@@ -93,9 +93,15 @@ def load_nickname_history():
 def save_nickname_history():
     """MongoDB에 닉네임 변경 기록을 저장합니다."""
     for user_id, history in nickname_history.items():
+        last_nickname = history[-1][0]  # 마지막 닉네임
+        current_nickname = history[-1][0] if len(history) == 1 else history[-2][0]  # 현재 닉네임 (변경 전 닉네임)
         nickname_collection.update_one(
             {"_id": user_id},
-            {"$set": {"history": [{"nickname": n, "date": d} for n, d in history], "last_nickname": history[-1][0]}},
+            {"$set": {
+                "history": [{"nickname": n, "date": d} for n, d in history],
+                "last_nickname": last_nickname,
+                "current_nickname": current_nickname
+            }},
             upsert=True,
         )
     print(f"[DEBUG] 닉네임 변경 기록 저장됨: {nickname_history}")
@@ -225,9 +231,11 @@ async def on_member_update(before, after):
 
     # 닉네임 변경 기록
     if before.display_name != after.display_name:
-        change_date = get_kst_time()
+        change_date = get_kst_time()  # 한국 시간으로 변경된 시간 설정
         if after.id not in nickname_history:
             nickname_history[after.id] = []
+
+        # 변경 전 닉네임을 current_nickname으로 설정하고 변경 후 닉네임을 저장
         nickname_history[after.id].append((before.display_name, change_date))
         save_nickname_history()
 
