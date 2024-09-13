@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import re
 from pymongo import MongoClient  # MongoDB 연결을 위한 패키지
+from pytz import timezone
 
 # 환경 변수에서 Discord 봇 토큰을 가져옵니다.
 TOKEN = os.environ.get("BOT_TOKEN")  # Discord 봇 토큰을 환경 변수에서 가져옵니다.
@@ -381,18 +382,17 @@ class JoinFormModal(Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         agreement_text = self.agreement.value
-        agreement_date = self.agreement_date.value
         nickname = self.nickname.value
         guild_name = self.guild_name.value
 
-        # 현재 날짜를 'YYYY-MM-DD' 형식으로 얻습니다.
-        today_date = datetime.now().strftime('%Y-%m-%d')
+        # 현재 날짜를 'YYYY-MM-DD' 형식으로 한국 시간 기준으로 얻습니다.
+        today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
 
         # 동의 여부와 날짜가 올바른지 검사
-        if "동의" not in agreement_text or agreement_date != today_date:
+        if "동의" not in agreement_text:
             await interaction.response.send_message(
-                "양식이 올바르지 않습니다. 닉네임 및 동의일자를 확실하게 기입해주세요.\n"
-                "예) 동의 일자 : YYYY-MM-DD",
+                f"양식이 올바르지 않습니다. 동의여부를 확인해 주세요.\n"
+                f"자동으로 설정된 동의일자: {today_date}",
                 ephemeral=True
             )
             return
@@ -407,7 +407,7 @@ class JoinFormModal(Modal):
                     f"[라테일 다과회] 내에서 개인 언쟁에 휘말릴 경우 본인의 길드의 도움을 받지 않으며 "
                     f"상대방 길드를 언급하지 않음에 동의하십니까?\n\n"
                     f"동의여부 : {agreement_text}\n"
-                    f"동의일자 : {agreement_date}\n"
+                    f"동의일자 : {today_date}\n"
                     f"인게임 내 닉네임 : {nickname}\n"
                     f"인게임 내 길드 : {guild_name}"
                 ),
