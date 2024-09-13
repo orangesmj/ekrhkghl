@@ -93,8 +93,9 @@ def load_nickname_history():
 def save_nickname_history():
     """MongoDB에 닉네임 변경 기록을 저장합니다."""
     for user_id, history in nickname_history.items():
-        last_nickname = history[-1][0] if len(history) > 0 else '기록 없음'  # 마지막 변경 전 닉네임
-        current_nickname = history[-1][0] if len(history) > 0 else '기록 없음'  # 현재 닉네임
+        last_nickname = history[-1][0] if len(history) > 0 else '기록 없음'  # 변경된 마지막 닉네임
+        # MongoDB에서 current_nickname을 가져오거나, 없으면 기본값 설정
+        current_nickname = nickname_collection.find_one({"_id": user_id}).get("current_nickname", "기록 없음")
         nickname_collection.update_one(
             {"_id": user_id},
             {"$set": {
@@ -235,17 +236,17 @@ async def on_member_update(before, after):
         if after.id not in nickname_history:
             nickname_history[after.id] = []
 
-        # 마지막 닉네임은 before의 닉네임, current는 after의 닉네임
+        # last_nickname은 변경 전, current_nickname은 변경 후
         nickname_history[after.id].append((before.display_name, change_date))
         save_nickname_history()
 
-        # current_nickname 업데이트
+        # current_nickname을 최신으로 업데이트
         nickname_collection.update_one(
             {"_id": after.id},
             {"$set": {"current_nickname": after.display_name}},
             upsert=True
         )
-
+        print(f"[DEBUG] 현재 닉네임이 업데이트됨: {after.display_name}")
 # 주기적으로 메시지 삭제
 @tasks.loop(minutes=3)
 async def delete_messages():
