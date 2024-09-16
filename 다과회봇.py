@@ -718,7 +718,7 @@ async def cookie_ranking(interaction: discord.Interaction):
 
 
 
-# 추첨 기능 명령어
+# 추첨 명령어
 @bot.tree.command(name="추첨", description="아이템을 걸고 추첨 이벤트를 시작합니다.")
 @app_commands.describe(item="지급할 아이템", consume_cookies="참여 시 소모되는 쿠키 개수", duration="추첨 지속 시간 (초)", prize_amount="지급할 아이템 개수")
 @app_commands.choices(
@@ -738,14 +738,21 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
-    # 추첨 이벤트 시작 코드
-    cncja_channel = bot.get_channel(cncja)  # 채널 ID를 cncja로 수정했습니다.
+    # 시작 시간과 종료 시간 계산
+    start_time = datetime.now(timezone('Asia/Seoul'))
+    end_time = start_time + timedelta(seconds=duration)
+    start_time_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+    end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+
+    # 추첨 이벤트 시작 메시지 전송
+    cncja_channel = bot.get_channel(1285220332235522131)  # 채널 ID를 cncja로 수정했습니다.
     embed = discord.Embed(
         title="추첨 이벤트 시작!",
         description=(
             f"{item} {prize_amount}개가 걸려 있습니다!\n"
             f"참여 시 쿠키 {consume_cookies}개가 소모됩니다.\n"
-            f"추첨은 {duration}초 동안 진행됩니다.\n"
+            f"시작 시간: {start_time_str}\n"
+            f"종료 시간: {end_time_str}\n"
             f"{cncja_1} 이모지를 눌러 참여하세요!"
         ),
         color=discord.Color.gold()
@@ -777,6 +784,22 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
             await cncja_channel.send(f"{user.display_name}님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소진됩니다.", delete_after=5)
     except asyncio.TimeoutError:
         await cncja_channel.send("추첨 시간이 종료되었습니다.", delete_after=5)
+
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
+
+    # 이벤트 메시지 자동 삭제
+    await asyncio.sleep(5)  # 5초 대기 후 삭제
+    await message.delete()  # 추첨 이벤트 메시지 삭제
 
     # 결과 발표
     if participants:
