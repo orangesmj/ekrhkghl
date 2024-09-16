@@ -2,43 +2,53 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
-import re
 from pymongo import MongoClient  # MongoDB 연결을 위한 패키지
 from pytz import timezone
+import random
+import asyncio  # 비동기 처리를 위한 패키지
 
 # 한국 표준 시간(KST)으로 현재 시간을 반환하는 함수
 def get_kst_time():
+    """한국 표준 시간대로 현재 시간을 반환합니다."""
     kst = timezone('Asia/Seoul')
     return datetime.now(kst).strftime('%Y-%m-%d %H:%M:%S')
 
-# 환경 변수에서 Discord 봇 토큰을 가져옵니다.
+# 환경 변수에서 Discord 봇 토큰과 MongoDB URL을 가져옵니다.
 TOKEN = os.environ.get("BOT_TOKEN")  # Discord 봇 토큰을 환경 변수에서 가져옵니다.
+mongo_url = os.environ.get("MONGO_URL")
+
+# 환경 변수 검증
+if not TOKEN:
+    raise ValueError("환경 변수 BOT_TOKEN이 설정되지 않았습니다.")
+
+if not mongo_url:
+    raise ValueError("MongoDB URL이 설정되지 않았습니다.")
 
 # MongoDB 연결 설정
-# MongoDB 클라이언트를 설정하여 데이터베이스와 연결합니다.
-mongo_url = os.environ.get("MONGO_URL")
 client = MongoClient(mongo_url)
 
 # 사용할 데이터베이스와 컬렉션 설정
-# 각 데이터를 저장할 컬렉션을 지정합니다.
 db = client["DiscordBotDatabase"]  # 데이터베이스 이름 설정
 nickname_collection = db["nickname_history"]  # 닉네임 변경 기록 컬렉션
 ban_collection = db["ban_list"]  # 차단된 사용자 정보를 저장할 컬렉션
 entry_collection = db["entry_list"]  # 입장 정보를 저장할 컬렉션
 exit_collection = db["exit_list"]  # 퇴장 정보를 저장할 컬렉션
+inventory_collection = db["inventory"]  # 유저의 재화(쿠키, 커피 등) 인벤토리
+attendance_collection = db["attendance"]  # 출석 기록을 저장할 컬렉션
+coffee_usage_collection = db["coffee_usage"]  # 커피 사용 기록을 저장할 컬렉션
+bundle_open_count_collection = db["bundle_open_count"]  # 꾸러미 오픈 횟수 기록
 
 # 봇의 인텐트를 설정합니다. 모든 필요한 인텐트를 활성화합니다.
 intents = discord.Intents.default()
-intents.members = True
+intents.members = True  # 멤버 관련 이벤트 허용
 intents.message_content = True  # 메시지 콘텐츠 접근 허용
 intents.messages = True  # 메시지 관련 이벤트 허용
 intents.guilds = True  # 서버 관련 이벤트 허용
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # 닉네임 변경 기록 및 입장/퇴장 기록을 저장할 딕셔너리
-# 데이터를 임시로 저장하는 변수입니다. MongoDB와 동기화하여 사용됩니다.
 nickname_history = {}
 ban_list = {}
 entry_list = {}
@@ -74,28 +84,49 @@ Role_5 = 1264571068874756149  # 라소소 역할 변수
 Nick_ch = 1281830606476410920  # 닉네임 변경 로그 채널 ID 변수
 open_channel_id = 1281629317402460161  # 서버가 켜지면 알람이 뜰 채널 변수
 
+# 새로운 변수 추가
+cnftjr = 1264398760499220570  # 출석 체크 메시지 채널 ID
+cncja_result = 1285220422819774486  # 추첨 결과 채널 ID
+rkdnlqkdnlqh = 1285220522422173727  # 가위바위보 이벤트 채널 ID
+rkdnlqkdnlqh_result = 1285220550511431761  # 가위바위보 결과 채널 ID
+
 # 삭제된 메시지를 기록할 로그 채널 ID
 Rec = 1267642384108486656  # 전체 삭제 로그 채널 ID 변수
 
 # 역할 변수 설정
 Boost = 1264071791404650567  # 설정한 역할 ID (서버 부스트 역할)
+MS_3 = 1264940881417470034  # 서버장 역할 ID
 
-# JSON 파일에서 데이터를 불러오는 대신, MongoDB에서 데이터를 불러오는 함수로 수정합니다.
+# 재화(쿠키, 커피 등)과 관련된 설정
+Cookie = "<:cookie_blue:1270270603135549482>"          # 쿠키 이모지 변수값
+Cookie_S = "<:cookie_bundle_S:1270270702599016541>"    # 쿠키꾸러미(소) 이모지 변수값
+Cookie_M = "<:cookie_bundle_M:1270270764884688938>"    # 쿠키꾸러미(중) 이모지 변수값
+Cookie_L = "<:cookie_bundle_L:1270270801970462805>"    # 쿠키꾸러미(대) 이모지 변수값
+Coffee = "<:Coffee:1271072742581600377>"                # 커피 이모지 변수값
+Ticket = "<:Premium_Ticket:1271017996864979026>"        # 티켓 이모지 변수값
+
+# 가위바위보 이벤트 관련 이모지 설정
+rkdnl = "<:event_scissor:1270902821365223525>"        # 가위 이모지 변수값
+qkdnl = "<:event_rock:1270902812246675499>"           # 바위 이모지 변수값
+qh = "<:event_paper:1270902801945464862>"             # 보 이모지 변수값
+
+# 닉네임 변경 기록을 MongoDB에서 불러오는 함수
 def load_nickname_history():
     """MongoDB에서 닉네임 변경 기록을 불러옵니다."""
     global nickname_history
     nickname_history = {
-        doc["_id"]: [(item["nickname"], item["date"]) for item in doc["history"]]
+        int(doc["_id"]): [(item["nickname"], item["date"]) for item in doc["history"]]
         for doc in nickname_collection.find()
     }
     print(f"[DEBUG] 닉네임 변경 기록 불러옴: {nickname_history}")
 
+# 닉네임 변경 기록을 MongoDB에 저장하는 함수
 def save_nickname_history():
     """MongoDB에 닉네임 변경 기록을 저장합니다."""
     for user_id, history in nickname_history.items():
         last_nickname = history[-1][0] if len(history) > 0 else '기록 없음'  # 변경된 마지막 닉네임
-        # MongoDB에서 current_nickname을 가져오거나, 없으면 기본값 설정
-        current_nickname = nickname_collection.find_one({"_id": user_id}).get("current_nickname", "기록 없음")
+        current_nickname_doc = nickname_collection.find_one({"_id": user_id})
+        current_nickname = current_nickname_doc.get("current_nickname", "기록 없음") if current_nickname_doc else "기록 없음"
         nickname_collection.update_one(
             {"_id": user_id},
             {"$set": {
@@ -107,12 +138,14 @@ def save_nickname_history():
         )
     print(f"[DEBUG] 닉네임 변경 기록 저장됨: {nickname_history}")
 
+# 차단 목록을 MongoDB에서 불러오는 함수
 def load_ban_list():
     """MongoDB에서 차단 목록을 불러옵니다."""
     global ban_list
-    ban_list = {doc["_id"]: doc["data"] for doc in ban_collection.find()}
+    ban_list = {int(doc["_id"]): doc["data"] for doc in ban_collection.find()}
     print(f"[DEBUG] 차단 목록 불러옴: {ban_list}")
 
+# 차단 목록을 MongoDB에 저장하는 함수
 def save_ban_list():
     """MongoDB에 차단 목록을 저장합니다."""
     for user_id, data in ban_list.items():
@@ -123,12 +156,14 @@ def save_ban_list():
         )
     print(f"[DEBUG] 차단 목록 저장됨: {ban_list}")
 
+# 입장 기록을 MongoDB에서 불러오는 함수
 def load_entry_list():
     """MongoDB에서 입장 기록을 불러옵니다."""
     global entry_list
-    entry_list = {doc["_id"]: doc["data"] for doc in entry_collection.find()}
+    entry_list = {int(doc["_id"]): doc["data"] for doc in entry_collection.find()}
     print(f"[DEBUG] 입장 기록 불러옴: {entry_list}")
 
+# 입장 기록을 MongoDB에 저장하는 함수
 def save_entry_list():
     """MongoDB에 입장 기록을 저장합니다."""
     for user_id, data in entry_list.items():
@@ -139,12 +174,14 @@ def save_entry_list():
         )
     print(f"[DEBUG] 입장 기록 저장됨: {entry_list}")
 
+# 퇴장 기록을 MongoDB에서 불러오는 함수
 def load_exit_list():
     """MongoDB에서 퇴장 기록을 불러옵니다."""
     global exit_list
-    exit_list = {doc["_id"]: doc["data"] for doc in exit_collection.find()}
+    exit_list = {int(doc["_id"]): doc["data"] for doc in exit_collection.find()}
     print(f"[DEBUG] 퇴장 기록 불러옴: {exit_list}")
 
+# 퇴장 기록을 MongoDB에 저장하는 함수
 def save_exit_list():
     """MongoDB에 퇴장 기록을 저장합니다."""
     for user_id, data in exit_list.items():
@@ -155,129 +192,49 @@ def save_exit_list():
         )
     print(f"[DEBUG] 퇴장 기록 저장됨: {exit_list}")
 
-# 봇이 준비되었을 때 실행되는 이벤트
-@bot.event
-async def on_ready():
-    """봇이 준비되었을 때 실행되는 함수입니다."""
-    print(f'Logged in as {bot.user}')
-    load_nickname_history()  # 닉네임 기록을 불러옵니다.
-    load_ban_list()          # 차단 목록을 불러옵니다.
-    load_entry_list()        # 입장 기록을 불러옵니다.
-    load_exit_list()         # 퇴장 기록을 불러옵니다.
-    try:
-        await bot.tree.sync()  # 슬래시 명령어를 동기화합니다.
-        print("슬래시 명령어가 동기화되었습니다.")
-    except Exception as e:
-        print(f"명령어 동기화 중 오류 발생: {e}")
+# 특정 유저의 인벤토리를 MongoDB에서 불러오는 함수
+def load_inventory(user_id):
+    """MongoDB에서 특정 유저의 인벤토리를 불러옵니다."""
+    user_inventory = inventory_collection.find_one({"_id": user_id})
+    if not user_inventory:
+        # 기본값 설정
+        return {
+            "쿠키": 0,
+            "커피": 0,
+            "티켓": 0,
+            "쿠키꾸러미(소)": 0,
+            "쿠키꾸러미(중)": 0,
+            "쿠키꾸러미(대)": 0
+        }
+    return user_inventory.get("items", {
+        "쿠키": 0,
+        "커피": 0,
+        "티켓": 0,
+        "쿠키꾸러미(소)": 0,
+        "쿠키꾸러미(중)": 0,
+        "쿠키꾸러미(대)": 0
+    })
 
-    delete_messages.start()   # 주기적인 메시지 삭제 태스크 시작
-    delete_messages_2.start() # 주기적인 메시지 삭제 태스크 시작
-    channel = bot.get_channel(open_channel_id)
-    if channel:
-        await channel.send('봇이 활성화되었습니다!')  # 봇이 활성화되었음을 알림
+# 특정 유저의 인벤토리를 MongoDB에 저장하는 함수
+def save_inventory(user_id, items):
+    """MongoDB에 특정 유저의 인벤토리를 저장합니다."""
+    inventory_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"items": items}},
+        upsert=True
+    )
+    print(f"[DEBUG] {user_id}의 인벤토리가 저장되었습니다: {items}")
 
-# 입장 및 퇴장 이벤트 처리
-@bot.event
-async def on_member_join(member):
-    """사용자가 서버에 입장할 때 호출되는 함수입니다."""
-    user_id = str(member.id)
-    current_time = get_kst_time()
-    entry_list[user_id] = {
-        "nickname": member.display_name,
-        "last_join": current_time,
-        "join_count": entry_list.get(user_id, {}).get("join_count", 0) + 1
-    }
-    save_entry_list()  # 입장 기록을 MongoDB에 저장
+# 보너스 적용 및 최대 획득량 제한 함수
+def apply_bonus(amount, max_amount, bonus_active):
+    """보너스를 적용하고 최대 획득량을 제한하는 함수입니다."""
+    if bonus_active:
+        amount = int(amount * 1.5)
+        if amount > max_amount:
+            amount = max_amount
+    return amount
 
-    # 입장 횟수가 1회 이상인 경우 관리자에게 알림
-    if entry_list[user_id]["join_count"] > 1:
-        last_nickname, last_date = nickname_history.get(int(user_id), [(member.display_name, '기록 없음')])[-1]
-        for guild_member in member.guild.members:
-            if ad1 in [role.id for role in guild_member.roles]:
-                try:
-                    await guild_member.send(
-                        f"ID: {member.id}가 다시 입장했습니다. "
-                        f"퇴장 전 마지막 별명: '{last_nickname}' (변경일: {last_date})"
-                    )
-                except discord.Forbidden:
-                    print(f"DM을 보낼 수 없습니다: {guild_member.display_name}")
-
-@bot.event
-async def on_member_remove(member):
-    """사용자가 서버에서 퇴장할 때 호출되는 함수입니다."""
-    user_id = str(member.id)
-    current_time = get_kst_time()
-    exit_list[user_id] = {
-        "nickname": member.display_name,
-        "last_leave": current_time,
-        "leave_count": exit_list.get(user_id, {}).get("leave_count", 0) + 1
-    }
-    save_exit_list()  # 퇴장 기록을 MongoDB에 저장
-
-    # 사용자가 차단된 목록에 있는 경우 업데이트
-    if member.id in ban_list:
-        ban_list[member.id]['last_nickname'] = member.display_name
-        save_ban_list()
-
-# 서버 부스트 시, 역할 자동 활성화
-@bot.event
-async def on_member_update(before, after):
-    """사용자의 업데이트(역할 추가 등)를 처리합니다."""
-    # Nitro Boost 여부를 감지
-    if not before.premium_since and after.premium_since:
-        boost_role = after.guild.get_role(Boost)
-        if boost_role:
-            await after.add_roles(boost_role)
-            await after.send(f'서버 부스트 감사합니다! {boost_role.name} 역할이 부여되었습니다.')
-
-    # 닉네임 변경 기록
-    if before.display_name != after.display_name:
-        change_date = get_kst_time()  # 한국 시간으로 변경된 시간 설정
-        if after.id not in nickname_history:
-            nickname_history[after.id] = []
-
-        # last_nickname은 변경 전, current_nickname은 변경 후
-        nickname_history[after.id].append((before.display_name, change_date))
-        save_nickname_history()
-
-        # current_nickname을 최신으로 업데이트
-        nickname_collection.update_one(
-            {"_id": after.id},
-            {"$set": {"current_nickname": after.display_name}},
-            upsert=True
-        )
-        print(f"[DEBUG] 현재 닉네임이 업데이트됨: {after.display_name}")
-# 주기적으로 메시지 삭제
-@tasks.loop(minutes=3)
-async def delete_messages():
-    """특정 채널의 메시지를 주기적으로 삭제합니다."""
-    channel = bot.get_channel(Ch_2)
-    if channel:
-        async for message in channel.history(limit=100):
-            if message.id != MS_1:
-                await message.delete()
-                print(f'Deleted message from {message.author.display_name} with content: {message.content}')
-
-@tasks.loop(minutes=3)
-async def delete_messages_2():
-    """닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다."""
-    nickname_channel = bot.get_channel(Ch_3)
-    if nickname_channel:
-        async for message in nickname_channel.history(limit=100):
-            if message.id != MS_2 and message.author == bot.user:
-                await message.delete()
-                print(f"Deleted old nickname change button message from {message.author.display_name}")
-        await send_nickname_button(nickname_channel)
-
-    join_form_channel = bot.get_channel(Ch_2)
-    if join_form_channel:
-        async for message in join_form_channel.history(limit=100):
-            if message.id != MS_1 and message.author == bot.user:
-                await message.delete()
-                print(f"Deleted old join form button message from {message.author.display_name}")
-        await send_join_form_button(join_form_channel)
-
-# 리액션을 통한 역할 부여 및 제거
+# 리액션을 통한 역할 부여 및 제거를 처리하는 함수
 async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji, role_id):
     """리액션을 통해 역할을 부여하거나 제거합니다."""
     if payload.channel_id != channel_id or payload.message_id != message_id:
@@ -302,6 +259,7 @@ async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji
             except Exception as e:
                 await member.send(f"역할 부여 중 오류 발생: {e}")
 
+# 리액션 추가 시 호출되는 이벤트
 @bot.event
 async def on_raw_reaction_add(payload):
     """리액션 추가 시 호출되는 함수입니다."""
@@ -344,7 +302,7 @@ async def on_raw_reaction_add(payload):
                 except Exception as e:
                     await member.send(f"역할 부여 오류: {e}")
 
-# 메시지 삭제 시 로그 기록
+# 메시지 삭제 시 로그를 기록하는 이벤트
 @bot.event
 async def on_message_delete(message):
     """메시지 삭제 시 로그를 기록합니다."""
@@ -398,7 +356,7 @@ async def on_message_delete(message):
     except discord.HTTPException as e:
         print(f"메시지 삭제 기록 중 오류 발생: {e}")
 
-# 가입 양식 작성 모달 창
+# 가입 양식 작성 모달 창 클래스 정의
 class JoinFormModal(Modal):
     """가입 양식을 작성하는 모달 창입니다."""
     def __init__(self, member):
@@ -414,9 +372,10 @@ class JoinFormModal(Modal):
         self.add_item(self.guild_name)
 
     async def on_submit(self, interaction: discord.Interaction):
+        """모달이 제출되었을 때 호출되는 함수입니다."""
         agreement_text = self.agreement.value
         agreement_date = self.agreement_date.value
-        
+
         # 현재 날짜를 'YYYY-MM-DD' 형식으로 한국 시간 기준으로 얻습니다.
         today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
         nickname = self.nickname.value
@@ -462,7 +421,7 @@ class JoinFormModal(Modal):
         await interaction.user.send("가입 양식이 성공적으로 제출되었습니다!")
         await interaction.response.send_message("가입 양식이 성공적으로 제출되었습니다.", ephemeral=True)
 
-# 닉네임 변경 모달 창
+# 닉네임 변경 모달 창 클래스 정의
 class NicknameChangeModal(Modal):
     """닉네임을 변경하는 모달 창입니다."""
     def __init__(self, member):
@@ -472,6 +431,7 @@ class NicknameChangeModal(Modal):
         self.add_item(self.new_nickname)
 
     async def on_submit(self, interaction: discord.Interaction):
+        """모달이 제출되었을 때 호출되는 함수입니다."""
         new_nickname = self.new_nickname.value
         old_nick = self.member.display_name
 
@@ -533,7 +493,7 @@ class NicknameChangeModal(Modal):
             embed.add_field(name="변경된 닉네임", value=new_nickname, inline=False)
             await nick_log_channel.send(embed=embed)
 
-# 모달 및 버튼 처리 함수
+# 모달 및 버튼을 처리하는 함수들
 async def send_join_form_button(channel):
     """가입 양식 작성 버튼을 전송하는 함수입니다."""
     button = Button(label="가입 양식 작성", style=discord.ButtonStyle.primary)
@@ -554,27 +514,16 @@ async def send_nickname_button(channel):
     view.add_item(button)
     await channel.send("닉네임 변경 버튼이 활성화되었습니다.", view=view, delete_after=None)
 
-# /차단, /차단목록, /차단해제 슬래시 명령어 정의
-@bot.tree.command(name="차단", description="서버에서 사용자를 차단합니다.")
-@app_commands.describe(user="차단할 사용자를 선택하세요.", reason="차단 사유를 입력하세요.")
-async def ban_user(interaction: discord.Interaction, user: discord.User, reason: str = "사유 없음"):
-    """사용자를 차단하는 슬래시 명령어입니다."""
-    admin_role = interaction.guild.get_role(ad1)
-    if admin_role not in interaction.user.roles:
-        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
-        return
+# 닉네임 중복 여부를 확인하는 함수
+def is_duplicate_nickname(nickname, guild):
+    """닉네임 중복 여부를 확인합니다."""
+    normalized_nickname = nickname.lower()
+    for member in guild.members:
+        if member.display_name.lower() == normalized_nickname:
+            return True
+    return False
 
-    guild = interaction.guild
-    try:
-        await guild.ban(user, reason=reason)
-        ban_list[user.id] = {"nickname": user.name, "reason": reason}
-        save_ban_list()  # 차단 목록을 MongoDB에 저장
-        await interaction.response.send_message(f"사용자 {user.mention}가 차단되었습니다. 사유: {reason}")
-    except discord.Forbidden:
-        await interaction.response.send_message("차단할 권한이 없습니다.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"차단 중 오류가 발생했습니다: {e}", ephemeral=True)
-
+# 슬래시 명령어: 차단된 사용자 목록을 보여주는 함수
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     """차단된 사용자의 목록을 보여주는 슬래시 명령어입니다."""
@@ -585,27 +534,32 @@ async def ban_list_command(interaction: discord.Interaction):
 
     if ban_list:
         ban_info = "\n".join(
-            [f"ID: {user_id}, 마지막 별명: {info.get('last_nickname', '기록 없음')}, 사유: {info['reason']}"
+            [f"ID: {user_id}, 닉네임: {info.get('nickname', '알 수 없음')}, 마지막 닉네임: {info.get('last_nickname', '기록 없음')}, 사유: {info['reason']}"
              for user_id, info in ban_list.items()]
         )
         await interaction.response.send_message(f"차단된 사용자 목록:\n{ban_info}", ephemeral=True)
     else:
         await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
+# 슬래시 명령어: 차단된 사용자를 해제하는 함수
 @bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
-@app_commands.describe(nickname="차단 해제할 사용자의 마지막 별명을 입력하세요.")
+@app_commands.describe(nickname="차단 해제할 사용자의 별명을 입력하세요.")
 async def unban_user(interaction: discord.Interaction, nickname: str):
     """차단된 사용자를 해제하는 슬래시 명령어입니다."""
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
-        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.",
         return
 
-    user_id = next((uid for uid, info in ban_list.items() if info.get('last_nickname') == nickname), None)
+    # 사용자 찾기: nickname과 last_nickname 모두 확인
+    user_id = next(
+        (uid for uid, info in ban_list.items() if info.get('nickname') == nickname or info.get('last_nickname') == nickname),
+        None
+    )
 
     if not user_id:
         await interaction.response.send_message("해당 별명을 가진 차단된 사용자를 찾을 수 없습니다.", ephemeral=True)
-        await show_ban_list(interaction)
+        await ban_list_command(interaction)
         return
 
     guild = interaction.guild
@@ -615,7 +569,7 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
         del ban_list[int(user_id)]
         save_ban_list()  # 차단 목록을 MongoDB에 저장
         await interaction.response.send_message(f"사용자 {nickname}의 차단이 해제되었습니다.")
-        await show_ban_list(interaction)
+        await ban_list_command(interaction)
     except discord.NotFound:
         await interaction.response.send_message("해당 ID를 가진 사용자를 찾을 수 없습니다.", ephemeral=True)
     except discord.Forbidden:
@@ -623,26 +577,268 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     except Exception as e:
         await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# 차단 목록 표시 함수
-async def show_ban_list(interaction: discord.Interaction):
-    """현재 차단된 사용자의 목록을 보여줍니다."""
-    if ban_list:
-        ban_info = "\n".join(
-            [f"ID: {user_id}, 마지막 별명: {info.get('last_nickname', '기록 없음')}, 사유: {info['reason']}"
-             for user_id, info in ban_list.items()]
-        )
-        await interaction.followup.send(f"현재 차단된 사용자 목록:\n{ban_info}", ephemeral=True)
-    else:
-        await interaction.followup.send("현재 차단된 사용자가 없습니다.", ephemeral=True)
+# 관리자 전용 아이템 지급 명령어
+@bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
+@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
+async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
+    """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
+    admin_role = interaction.guild.get_role(ad1)
+    if admin_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        return
 
-# 닉네임 중복 확인 함수
-def is_duplicate_nickname(nickname, guild):
-    """닉네임 중복 여부를 확인합니다."""
-    normalized_nickname = nickname.lower()
-    for member in guild.members:
-        if member.display_name.lower() == normalized_nickname:
-            return True
-    return False
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정 (예: 쿠키 최대 100개)
+    max_amounts = {
+        "쿠키": 100,
+        "커피": 10,
+        "티켓": 5,
+        "쿠키꾸러미(소)": 50,
+        "쿠키꾸러미(중)": 30,
+        "쿠키꾸러미(대)": 20
+    }
+    max_amount = max_amounts.get(item, amount)
+
+    # 최대 획득량 제한
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+# 가위바위보 이벤트 클래스 정의
+class RockPaperScissorsView(View):
+    def __init__(self):
+        super().__init__(timeout=60)  # 1분 동안 반응 대기
+        self.participants = {}  # 참여자 딕셔너리: user_id -> choice
+
+    @discord.ui.button(label="가위", style=discord.ButtonStyle.primary, emoji=rkdnl)
+    async def scissors(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '가위')
+
+    @discord.ui.button(label="바위", style=discord.ButtonStyle.primary, emoji=qkdnl)
+    async def rock(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '바위')
+
+    @discord.ui.button(label="보", style=discord.ButtonStyle.primary, emoji=qh)
+    async def paper(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '보')
+
+    async def process_choice(self, interaction: discord.Interaction, choice):
+        user_id = interaction.user.id
+        if user_id in self.participants:
+            await interaction.response.send_message("이미 참여하셨습니다.", ephemeral=True)
+            return
+
+        # 인벤토리에서 쿠키 5개 소진
+        items = load_inventory(str(user_id))
+        if items.get("쿠키", 0) < 5:
+            await interaction.response.send_message("보유한 쿠키가 5개 이상 필요합니다.", ephemeral=True)
+            return
+
+        items["쿠키"] -= 5
+        save_inventory(str(user_id), items)
+
+        self.participants[user_id] = choice
+        await interaction.response.send_message(f"'{choice}'을(를) 선택하셨습니다!", ephemeral=True)
+
+    async def on_timeout(self):
+        # 이벤트 종료 후 결과 처리
+        if not self.participants:
+            return  # 참여자가 없을 경우 종료
+
+        # 랜덤으로 봇의 선택
+        bot_choice = random.choice(['가위', '바위', '보'])
+
+        # 결과 채널 가져오기
+        result_channel = bot.get_channel(rkdnlqkdnlqh_result)
+        if not result_channel:
+            result_channel = bot.get_channel(cncja_result)  # 대체 채널
+
+        results = []
+        for user_id, choice in self.participants.items():
+            outcome = determine_rps_outcome(choice, bot_choice)
+            user = bot.get_user(user_id)
+            if user:
+                if outcome == "win":
+                    # 쿠키꾸러미(소) 4개 지급
+                    items = load_inventory(str(user_id))
+                    items["쿠키꾸러미(소)"] += 4
+                    save_inventory(str(user_id), items)
+                    results.append(f"{user.display_name}님이 이겼습니다! {Cookie_S} 4개가 지급되었습니다.")
+                elif outcome == "lose":
+                    results.append(f"{user.display_name}님이 졌습니다!")
+                else:
+                    results.append(f"{user.display_name}님이 비겼습니다!")
+
+        # 봇의 선택과 함께 결과 메시지 전송
+        embed = discord.Embed(title="가위바위보 결과", description=f"봇의 선택: {bot_choice}", color=discord.Color.blue())
+        embed.add_field(name="결과", value="\n".join(results), inline=False)
+        await result_channel.send(embed=embed)
+
+# 승리 로직 결정 함수
+def determine_rps_outcome(user_choice, bot_choice):
+    """사용자의 선택과 봇의 선택을 비교하여 승패를 결정합니다."""
+    rules = {
+        '가위': '보',  # 가위는 보를 이김
+        '바위': '가위',  # 바위는 가위를 이김
+        '보': '바위'   # 보는 바위를 이김
+    }
+
+    if user_choice == bot_choice:
+        return "draw"
+    elif rules[user_choice] == bot_choice:
+        return "win"
+    else:
+        return "lose"
+
+# 매일 오후 9시에 가위바위보 이벤트를 시작하는 태스크
+@tasks.loop(hours=24)
+async def rps_event():
+    """매일 오후 9시에 가위바위보 이벤트를 시작합니다."""
+    now = datetime.now(timezone('Asia/Seoul'))
+    target_time = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    if now > target_time:
+        target_time += timedelta(days=1)
+    wait_seconds = (target_time - now).total_seconds()
+    await asyncio.sleep(wait_seconds)
+
+    # 이벤트 채널 가져오기
+    event_channel = bot.get_channel(rkdnlqkdnlqh)
+    if not event_channel:
+        event_channel = bot.get_channel(cncja_result)  # 대체 채널
+
+    # 이벤트 메시지 전송
+    embed = discord.Embed(
+        title="가위바위보 이벤트",
+        description=(
+            "가위바위보 이벤트가 시작되었습니다!\n"
+            "가위바위보 시 쿠키가 5개 소진됩니다.\n"
+            "가위바위보 승리 시, 쿠키꾸러미(소)가 4개 지급됩니다.\n"
+            "가위바위보는 아래 이모지를 누르면 자동 참여됩니다. (중복 참여 불가입니다.)"
+        ),
+        color=discord.Color.green()
+    )
+    message = await event_channel.send(embed=embed)
+
+    # 이모지 추가
+    await message.add_reaction(rkdnl)
+    await message.add_reaction(qkdnl)
+    await message.add_reaction(qh)
+
+    # 참여자를 저장할 딕셔너리
+    participants = {}
+
+    # 가위바위보 뷰 생성
+    view = RockPaperScissorsView()
+    await event_channel.send("가위바위보에 참여하려면 아래 이모지를 클릭하세요!", view=view)
+
+# 봇이 준비되었을 때 실행되는 이벤트
+@bot.event
+async def on_ready():
+    """봇이 준비되었을 때 실행되는 함수입니다."""
+    print(f'Logged in as {bot.user}')
+    load_nickname_history()  # 닉네임 기록을 불러옵니다.
+    load_ban_list()          # 차단 목록을 불러옵니다.
+    load_entry_list()        # 입장 기록을 불러옵니다.
+    load_exit_list()         # 퇴장 기록을 불러옵니다.
+    try:
+        await bot.tree.sync()  # 슬래시 명령어를 동기화합니다.
+        print("슬래시 명령어가 동기화되었습니다.")
+    except Exception as e:
+        print(f"명령어 동기화 중 오류 발생: {e}")
+
+    # 주기적인 태스크 시작
+    delete_messages.start()   # 주기적인 메시지 삭제 태스크 시작
+    delete_messages_2.start() # 주기적인 메시지 삭제 태스크 시작
+    rps_event.start()         # 가위바위보 이벤트 태스크 시작
+
+    # 봇이 활성화되었음을 알림
+    channel = bot.get_channel(open_channel_id)
+    if channel:
+        await channel.send('봇이 활성화되었습니다!')
+
+# 닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다.
+@tasks.loop(minutes=3)
+async def delete_messages_2():
+    """닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다."""
+    nickname_channel = bot.get_channel(Ch_3)
+    if nickname_channel:
+        async for message in nickname_channel.history(limit=100):
+            if message.id != MS_2 and message.author == bot.user:
+                await message.delete()
+                print(f"Deleted old nickname change button message from {message.author.display_name}")
+        await send_nickname_button(nickname_channel)
+
+    join_form_channel = bot.get_channel(Ch_2)
+    if join_form_channel:
+        async for message in join_form_channel.history(limit=100):
+            if message.id != MS_1 and message.author == bot.user:
+                await message.delete()
+                print(f"Deleted old join form button message from {message.author.display_name}")
+        await send_join_form_button(join_form_channel)
+
+# 메시지 삭제 시 로그 기록
+@bot.event
+async def on_message_delete(message):
+    """메시지 삭제 시 로그를 기록합니다."""
+    # 메시지가 봇이 작성한 것이거나, 특정 예외 채널에서 삭제된 경우 기록하지 않음
+    if message.author.bot or message.channel.id in [Ch_2, Ch_3]:
+        return
+
+    # 로그 채널 가져오기
+    log_channel = bot.get_channel(Rec)
+    if log_channel is None:
+        print("로그 채널을 찾을 수 없습니다.")
+        return
+
+    try:
+        # 삭제된 메시지의 기본 정보
+        deleted_message = (
+            f"**삭제된 메시지**\n"
+            f"**채널**: {message.channel.mention}\n"
+            f"**작성자**: {message.author.mention}\n"
+        )
+
+        # 메시지 내용 추가
+        if message.content:
+            deleted_message += f"**내용**: {message.content}\n"
+        else:
+            # 추가 콘텐츠를 검사
+            additional_content = []
+            if message.attachments:
+                attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
+                additional_content.append(f"**첨부 파일**:\n{attachment_urls}")
+
+            if message.embeds:
+                for index, embed in enumerate(message.embeds, start=1):
+                    embed_details = embed.to_dict()
+                    additional_content.append(f"**임베드 #{index}**: {embed_details}")
+
+            if message.stickers:
+                sticker_names = ", ".join([sticker.name for sticker in message.stickers])
+                additional_content.append(f"**스티커**: {sticker_names}")
+
+            if additional_content:
+                deleted_message += "\n".join(additional_content)
+            else:
+                deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
+
+        # 삭제된 메시지 정보를 임베드로 전송
+        embed = discord.Embed(description=deleted_message, color=discord.Color.red())
+        embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
+        await log_channel.send(embed=embed)
+        print("로그 채널에 삭제된 메시지가 전송되었습니다.")
+    except discord.HTTPException as e:
+        print(f"메시지 삭제 기록 중 오류 발생: {e}")
 
 # 봇 실행
-bot.run(TOKEN)  # 봇 실행 코드
+bot.run(TOKEN)
