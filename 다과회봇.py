@@ -59,11 +59,9 @@ ad1 = 1264012076997808308  # 운영자 역할 ID 변수
 
 # 역할 및 채널 ID 변수 설정
 Ch_1 = 1264567815340298281  # 입장가이드 채널 변수
-
 Me_1 = 1281651525529374760  # 내 ID 메시지 변수
 Emoji_1 = "✅"  # 입장가이드 이모지 변수
 Role_1 = 1281601086142021772  # 입장가이드 역할 변수
-
 Ch_2 = 1267706085763190818  # 가입양식 채널 변수
 Role_2 = 1281606443551686676  # 가입양식 완료 후 부여되는 역할 변수
 move_ch = 1264567865227346004  # 가입양식에서 가입보관소로 이동되는 채널 변수
@@ -104,7 +102,7 @@ Cookie_M = "<:cookie_bundle_M:1270270764884688938>"    # 쿠키꾸러미(중) �
 Cookie_L = "<:cookie_bundle_L:1270270801970462805>"    # 쿠키꾸러미(대) 이모지 변수값
 Coffee = "<:Coffee:1271072742581600377>"                # 커피 이모지 변수값
 Ticket = "<:Premium_Ticket:1271017996864979026>"        # 티켓 이모지 변수값
-
+cncja_1 = "<:cookie_red:1270270636417220630>"
 # 가위바위보 이벤트 관련 이모지 설정
 rkdnl = "<:event_scissor:1270902821365223525>"        # 가위 이모지 변수값
 qkdnl = "<:event_rock:1270902812246675499>"           # 바위 이모지 변수값
@@ -586,6 +584,62 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
+#추첨 명령어
+@bot.tree.command(name="추첨", description="지급 품목, 소모 쿠키 개수, 시간을 설정하여 추첨을 시작합니다.")
+@app_commands.describe(item="지급 품목을 선택하세요 (Cookie, Cookie_S, Cookie_M, Cookie_L, Coffee)", 
+                       consume_cookies="소모할 쿠키 개수를 입력하세요.", 
+                       duration="추첨 시간을 초 단위로 입력하세요.")
+async def raffle(interaction: discord.Interaction, item: str, consume_cookies: int, duration: int):
+    """지급 품목, 소모 쿠키 개수, 시간을 설정하여 추첨을 시작합니다."""
+    valid_items = ["Cookie", "Cookie_S", "Cookie_M", "Cookie_L", "Coffee"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"유효하지 않은 지급 품목입니다. {valid_items} 중 하나를 선택하세요.", ephemeral=True)
+        return
+    
+    embed = discord.Embed(
+        title="추첨이 시작되었습니다!",
+        description=f"지급 품목: {item}\n소모 쿠키: {consume_cookies}개\n참여하려면 아래 이모지를 클릭하세요.",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text=f"추첨 종료까지 {duration}초 남았습니다.")
+    
+    # 이벤트 메시지 전송
+    cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID에 맞게 수정하세요.
+    message = await cncja_channel.send(embed=embed)
+    await message.add_reaction(cncja_1)  # cncja_1은 <:cookie_red:1270270636417220630> 이모지입니다.
+
+    # 참여자 추적
+    participants = {}
+
+    # 콜백 함수 정의
+    def check(reaction, user):
+        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants
+
+    # 추첨 진행
+    try:
+        while True:
+            reaction, user = await bot.wait_for('reaction_add', timeout=duration, check=check)
+            # 인벤토리에서 쿠키 소모
+            items = load_inventory(str(user.id))
+            if items.get("쿠키", 0) < consume_cookies:
+                await cncja_channel.send(f"{user.display_name}님, 쿠키가 부족합니다. 참여할 수 없습니다.", delete_after=5)
+                continue
+            
+            # 쿠키 소모 및 참여 등록
+            items["쿠키"] -= consume_cookies
+            save_inventory(str(user.id), items)
+            participants[user.id] = user.display_name
+            await cncja_channel.send(f"{user.display_name}님이 추첨하셨습니다. 쿠키가 {consume_cookies}개 소진됩니다.")
+    except asyncio.TimeoutError:
+        await cncja_channel.send("추첨 시간이 종료되었습니다.")
+
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item}을(를) 획득하셨습니다!")
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.")
+
 
     # 인벤토리에 아이템 추가
     user_id = str(user.id)
@@ -765,6 +819,26 @@ async def on_ready():
     channel = bot.get_channel(open_channel_id)
     if channel:
         await channel.send('봇이 활성화되었습니다!')
+
+# 주기적인 메시지 삭제 태스크 정의
+@tasks.loop(minutes=3)  # 5분마다 실행 (필요에 맞게 시간 조정 가능)
+async def delete_messages():
+    """특정 채널에서 메시지를 주기적으로 삭제합니다."""
+    channel_id = 123456789012345678  # 삭제할 채널 ID를 여기에 입력하세요
+    channel = bot.get_channel(channel_id)
+    
+    if channel is None:
+        print("메시지를 삭제할 채널을 찾을 수 없습니다.")
+        return
+
+    # 최근 100개의 메시지를 불러와서 삭제
+    try:
+        async for message in channel.history(limit=100):
+            if message.author == bot.user:  # 봇이 보낸 메시지만 삭제
+                await message.delete()
+                print(f"Deleted message from {message.author.display_name}")
+    except Exception as e:
+        print(f"메시지 삭제 중 오류 발생: {e}")
 
 # 닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다.
 @tasks.loop(minutes=3)
