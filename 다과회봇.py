@@ -811,7 +811,6 @@ async def on_ready():
         print(f"명령어 동기화 중 오류 발생: {e}")
 
     # 주기적인 태스크 시작
-    delete_messages.start()   # 주기적인 메시지 삭제 태스크 시작
     delete_messages_2.start() # 주기적인 메시지 삭제 태스크 시작
     rps_event.start()         # 가위바위보 이벤트 태스크 시작
 
@@ -819,26 +818,6 @@ async def on_ready():
     channel = bot.get_channel(open_channel_id)
     if channel:
         await channel.send('봇이 활성화되었습니다!')
-
-# 주기적인 메시지 삭제 태스크 정의
-@tasks.loop(minutes=3)  # 5분마다 실행 (필요에 맞게 시간 조정 가능)
-async def delete_messages():
-    """특정 채널에서 메시지를 주기적으로 삭제합니다."""
-    channel_id = 123456789012345678  # 삭제할 채널 ID를 여기에 입력하세요
-    channel = bot.get_channel(channel_id)
-    
-    if channel is None:
-        print("메시지를 삭제할 채널을 찾을 수 없습니다.")
-        return
-
-    # 최근 100개의 메시지를 불러와서 삭제
-    try:
-        async for message in channel.history(limit=100):
-            if message.author == bot.user:  # 봇이 보낸 메시지만 삭제
-                await message.delete()
-                print(f"Deleted message from {message.author.display_name}")
-    except Exception as e:
-        print(f"메시지 삭제 중 오류 발생: {e}")
 
 # 닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다.
 @tasks.loop(minutes=3)
