@@ -866,15 +866,22 @@ def is_coffee_active(user_id):
     coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
 
     # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
-    if not coffee_usage or "end_time" not in coffee_usage:
+    if not coffee_usage or "last_used" not in coffee_usage:
         return False
 
-    # 현재 시간과 커피 사용 만료 시간 비교
-    end_time = coffee_usage["end_time"]
+    # 커피 사용 시간
+    last_used = coffee_usage["last_used"]
+
+    # 현재 시간을 KST로 설정
     current_time = datetime.now(timezone('Asia/Seoul'))
 
-    # 커피 사용이 만료되었는지 확인
+    # 마지막 사용 시간에 KST 시간대 적용
+    last_used = last_used.replace(tzinfo=timezone('Asia/Seoul'))
+
+    # 커피 사용 후 24시간이 경과했는지 확인
+    end_time = last_used + timedelta(hours=24)
     return current_time < end_time
+
 
 # /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
