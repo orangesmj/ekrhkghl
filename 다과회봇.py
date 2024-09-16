@@ -928,53 +928,50 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         return
 
     # 커피 사용 여부 확인
-    coffee_active = is_coffee_active(user_id)
+    coffee_active, used_count, max_count = is_coffee_active(user_id)
     multiplier = 1.5 if coffee_active else 1
     coffee_active_text = "O" if coffee_active else "X"
 
-    # 쿠키 지급 수량 설정 및 최대치 정의
+    # 커피 사용 시 최대 허용 개수만큼만 처리
+    if coffee_active:
+        amount = min(amount, max_count - used_count)
+
+    # 쿠키 지급 수량 설정
     if item == "쿠키꾸러미(소)":
         base_reward = random.randint(2, 5)
-        max_reward = 5
     elif item == "쿠키꾸러미(중)":
         base_reward = random.randint(5, 10)
-        max_reward = 10
     else:  # 쿠키꾸러미(대)
         base_reward = random.randint(10, 30)
-        max_reward = 30
 
-    # 보상 계산 (최대치 초과하지 않도록)
-    total_reward = min(int(base_reward * multiplier), max_reward) * amount
+    # 최종 지급 수량 계산
+    total_reward = int(base_reward * multiplier) * amount
 
     # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
     items["쿠키"] += total_reward
     save_inventory(user_id, items)
 
-    # 현재 오픈한 개수와 잔여 개수 표시
-    used_count = get_used_bundle_count(user_id)  # 현재 사용 꾸러미 개수
-    remaining_count = max(0, 10 - used_count)  # 잔여 개수 계산
+    # 남은 커피 효과 개수 업데이트
+    if coffee_active:
+        update_coffee_usage(user_id, used_count + amount)
 
     # 채널에 결과 메시지 전송
     cookie_open_channel = bot.get_channel(Cookie_open)
-    await cookie_open_channel.send(
+    message = (
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
-        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text} "
-        f"현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_count}개"
+        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
     )
+    if coffee_active:
+        message += f" 현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {max_count - used_count}개"
+    await cookie_open_channel.send(message)
 
     # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
-        f"커피 사용: {coffee_active_text} 현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_count}개", ephemeral=True
+        f"커피 사용: {coffee_active_text}", ephemeral=True
     )
 
-# 추가적으로 현재 사용한 꾸러미 개수를 추적하는 함수
-def get_used_bundle_count(user_id):
-    """현재 사용한 꾸러미의 개수를 추적하는 함수."""
-    # coffee_usage에서 사용한 개수를 가져옴
-    coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
-    return coffee_usage.get("used_bundles", 0) if coffee_usage else 0
 
 
 
