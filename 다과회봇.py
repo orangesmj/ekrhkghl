@@ -661,21 +661,30 @@ async def check_inventory(interaction: discord.Interaction, user: discord.User =
     # 인벤토리 정보 출력
     embed = discord.Embed(
         title=f"{target_user.display_name}님의 인벤토리",
-        description=f"쿠키: {items['쿠키']}개\n커피: {items['커피']}개\n티켓: {items['티켓']}개\n",
-        color=discord.Color.blue()
-    )
+    description=(
+        f"{Cookie} 쿠키: {items['쿠키']}개\n"
+        f"{Coffee} 커피: {items['커피']}개\n"
+        f"{Ticket} 티켓: {items['티켓']}개\n"
+        f"{Cookie_S} 쿠키꾸러미(소): {items['쿠키꾸러미(소)']}개\n"
+        f"{Cookie_M} 쿠키꾸러미(중): {items['쿠키꾸러미(중)']}개\n"
+        f"{Cookie_L} 쿠키꾸러미(대): {items['쿠키꾸러미(대)']}개\n"
+    ),
+)
     await interaction.response.send_message(embed=embed)
 
-#쿠키랭킹 명령어
+# 쿠키랭킹 명령어
 @bot.tree.command(name="쿠키랭킹", description="서버 내 쿠키 보유자 TOP 10을 확인합니다.")
 async def cookie_ranking(interaction: discord.Interaction):
     """서버 내 쿠키 보유자 TOP 10을 확인하는 명령어입니다."""
     rankings = inventory_collection.find().sort("items.쿠키", -1).limit(10)
-    ranking_list = [f"{idx+1}등: {bot.get_user(int(entry['_id'])).display_name} (보유 쿠키 개수: {entry['items']['쿠키']})"
-                    for idx, entry in enumerate(rankings)]
-    
+    ranking_list = [
+        f"{idx + 1}등: {bot.get_user(int(entry['_id'])).display_name} "
+        f"(보유 {Cookie} 개수: {entry['items']['쿠키']}개)"
+        for idx, entry in enumerate(rankings)
+    ]
+
     if not ranking_list:
-        await interaction.response.send_message("현재 쿠키 보유자가 없습니다.", ephemeral=True)
+        await interaction.response.send_message("현재 쿠키 보유자가 없습니다.", ephemeral=False)
         return
 
     await interaction.response.send_message("\n".join(ranking_list))
