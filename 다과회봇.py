@@ -523,7 +523,7 @@ def is_duplicate_nickname(nickname, guild):
     return False
 
 
-# 슬래시 명령어: 차단된 사용자 목록을 보여주는 함수
+# 차단 목록
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     """차단된 사용자의 목록을 보여주는 슬래시 명령어입니다."""
@@ -541,7 +541,7 @@ async def ban_list_command(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("현재 차단된 사용자가 없습니다.", ephemeral=True)
 
-# 슬래시 명령어: 차단된 사용자를 해제하는 함수
+# /차단해제 명령어
 @bot.tree.command(name="차단해제", description="차단된 사용자의 차단을 해제합니다.")
 @app_commands.describe(nickname="차단 해제할 사용자의 별명을 입력하세요.")
 async def unban_user(interaction: discord.Interaction, nickname: str):
@@ -824,6 +824,40 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
+
+# 커피 사용 기능: 24시간 동안 보상 증가 효과 활성화
+coffee_boost_users = {}  # 보상 증가 효과를 관리할 딕셔너리
+
+@bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
+async def use_coffee(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    items = load_inventory(user_id)
+
+    # 커피 수량 확인
+    if items.get("커피", 0) < 1:
+        await interaction.response.send_message("커피가 부족합니다. 커피를 소지하고 있어야 사용 가능합니다.", ephemeral=True)
+        return
+
+    # 커피 사용 처리
+    items["커피"] -= 1
+    save_inventory(user_id, items)
+    
+    # 보상 증가 효과 활성화: 24시간 동안 보상 1.5배 증가
+    coffee_boost_users[user_id] = datetime.now() + timedelta(hours=24)
+    await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=False)
+
+# 보상 획득 함수 수정
+def apply_bonus(amount, max_amount, bonus_active, user_id):
+    """보너스를 적용하고 최대 획득량을 제한하는 함수입니다."""
+    if bonus_active or (user_id in coffee_boost_users and coffee_boost_users[user_id] > datetime.now()):
+        amount = int(amount * 1.5)
+        if amount > max_amount:
+            amount = max_amount
+    return amount
+
+
+
+
 # 출석 체크 
 @bot.command(name="출석체크", description="출석 체크를 통해 보상을 받습니다.")
 async def attendance_check(ctx):
@@ -832,13 +866,30 @@ async def attendance_check(ctx):
     today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
 
     # 오늘 출석 체크 여부 확인
-    attendance_record = attendance_collection.find_one({"_id": user_id, "date": today_date})
+    attendance_record = attendance_collection.find_one({"_id": user_id, "last_date": today_date})
     if attendance_record:
         await ctx.send(f"{ctx.author.mention}, 오늘 이미 출석체크를 하셨습니다!", delete_after=5)
         return
 
     # 인벤토리 가져오기
     items = load_inventory(user_id)
+
+    # 출석 기록 불러오기
+    user_attendance = attendance_collection.find_one({"_id": user_id}) or {"streak": 0, "last_date": None}
+    last_date = user_attendance.get("last_date")
+    streak = user_attendance.get("streak", 0)
+
+    # 연속 출석 처리: 어제와의 차이가 1일이면 연속 출석 증가
+    if last_date and (datetime.strptime(today_date, '%Y-%m-%d') - datetime.strptime(last_date, '%Y-%m-%d')).days == 1:
+        streak += 1
+    else:
+        streak = 1  # 연속 출석이 끊겼을 경우 초기화
+
+    # 7일 연속 출석 시 커피 1개 지급
+    if streak == 7:
+        items["커피"] = items.get("커피", 0) + 1
+        await ctx.send(f"감사합니다. {ctx.author.mention}님, 7일 연속 출석하여 {Coffee} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+        streak = 0  # 7일 달성 시 초기화
 
     # 기본 보상 지급
     items["쿠키꾸러미(소)"] += 2  # 기본 보상 Cookie_S 2개 지급
@@ -853,15 +904,16 @@ async def attendance_check(ctx):
     # 출석 기록 저장
     attendance_collection.update_one(
         {"_id": user_id},
-        {"$set": {"date": today_date}},
+        {"$set": {"last_date": today_date, "streak": streak}},
         upsert=True
     )
 
     # 보상 지급 완료 메시지
     if boost_role in ctx.author.roles:
-        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요 !")
+        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
     else:
-        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요 !")
+        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+
 
 # 가위바위보 이벤트 클래스 정의
 class RockPaperScissorsView(View):
