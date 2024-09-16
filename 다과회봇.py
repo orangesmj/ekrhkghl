@@ -598,24 +598,13 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
 
 
 
-    #회수 명령어
-    # 회수 명령어: 특정 유저의 인벤토리에서 아이템 회수
-@bot.tree.command(name="회수", description="특정 유저에게서 재화를 회수합니다.")
-@app_commands.describe(user="재화를 회수할 사용자를 선택하세요.", item="회수할 아이템", amount="회수할 개수")
-@app_commands.choices(
-    item=[
-        app_commands.Choice(name="쿠키", value="쿠키"),
-        app_commands.Choice(name="커피", value="커피"),
-        app_commands.Choice(name="티켓", value="티켓"),
-        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
-        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
-        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
-    ]
-)
-async def take_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
-    """회수 명령어를 통해 특정 유저에게서 아이템을 회수합니다."""
-    admin_role = interaction.guild.get_role(ad1)
-    if admin_role not in interaction.user.roles:
+# 회수 명령어 정의
+@bot.tree.command(name="회수", description="특정 유저의 재화를 회수합니다.")
+@app_commands.describe(user="회수할 사용자를 선택하세요.", item="회수할 아이템", amount="회수할 개수")
+async def retrieve_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
+    """회수 명령어를 통해 특정 유저의 아이템을 회수합니다."""
+    ms3_role = interaction.guild.get_role(MS_3)  # MS_3 역할 가져오기
+    if ms3_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
@@ -623,20 +612,19 @@ async def take_item(interaction: discord.Interaction, user: discord.User, item: 
     user_id = str(user.id)
     items = load_inventory(user_id)
     valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
-    
     if item not in valid_items:
         await interaction.response.send_message(f"회수할 수 없는 아이템입니다: {item}", ephemeral=True)
         return
-    
-    # 회수할 아이템의 개수가 충분한지 확인
+
+    # 현재 개수보다 많은 양을 회수하려 할 경우
     if items[item] < amount:
-        await interaction.response.send_message(f"{user.display_name}님의 {item} 개수가 부족합니다.", ephemeral=True)
+        await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items[item]}", ephemeral=True)
         return
 
-    # 인벤토리에서 아이템 회수
     items[item] -= amount
     save_inventory(user_id, items)
-    await interaction.response.send_message(f"{user.display_name}님에게서 {item} {amount}개를 회수했습니다.")
+    await interaction.response.send_message(f"{user.display_name}에게서 {item} {amount}개를 회수했습니다.", ephemeral=True)
+
 
     # 인벤토리에 아이템 추가
     user_id = str(user.id)
@@ -725,6 +713,51 @@ async def cookie_ranking(interaction: discord.Interaction):
 
     await interaction.response.send_message("\n".join(ranking_list))
 
+@bot.command(name="출석체크", help="출석 체크를 합니다.")
+async def attendance_check(ctx):
+    """유저의 출석 체크를 처리하는 명령어입니다."""
+    user_id = str(ctx.author.id)
+    today = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+
+    # 출석 체크 여부 확인
+    attendance_record = attendance_collection.find_one({"_id": user_id})
+
+    # 오늘의 출석이 이미 기록된 경우
+    if attendance_record and today in attendance_record.get("dates", []):
+        await ctx.send(f"{ctx.author.mention}, 오늘 이미 출석체크를 하셨습니다!")
+        return
+
+    # 출석 체크 기록 갱신
+    if attendance_record:
+        attendance_collection.update_one(
+            {"_id": user_id},
+            {"$push": {"dates": today}}
+        )
+    else:
+        attendance_collection.insert_one(
+            {"_id": user_id, "dates": [today]}
+        )
+
+    # 항상 Cookie_S 아이템 2개 증정
+    items_collection.update_one(
+        {"_id": user_id},
+        {"$inc": {Cookie_S: 2}},
+        upsert=True
+    )
+
+    # Boost 역할이 있는지 확인
+    member = ctx.guild.get_member(ctx.author.id)
+    if any(role.id == Boost for role in member.roles):
+        # Boost 역할이 있을 경우 Cookie_M 아이템 1개 증정
+        items_collection.update_one(
+            {"_id": user_id},
+            {"$inc": {Cookie_M: 1}},
+            upsert=True
+        )
+
+    # 출석 체크 완료 메시지
+    await ctx.send(f"{ctx.author.mention}, 출석체크가 완료되었습니다! 선물꾸러미가 지급되었습니다. 인벤토리를 확인해주세요!")
+
     # 이벤트 메시지 전송
     cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID에 맞게 수정하세요.
     message = await cncja_channel.send(embed=embed)
@@ -789,6 +822,8 @@ async def cookie_ranking(interaction: discord.Interaction):
     save_inventory(user_id, items)
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+
 
 # 가위바위보 이벤트 클래스 정의
 class RockPaperScissorsView(View):
