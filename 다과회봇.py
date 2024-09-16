@@ -918,7 +918,7 @@ async def attendance_check(ctx):
     # 7일 연속 출석 시 커피 1개 지급
     if streak == 7:
         items["커피"] = items.get("커피", 0) + 1
-        await ctx.send(f"감사합니다. {ctx.author.mention}님, 7일 연속 출석하여 {Coffee} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+        await ctx.send(f"감사합니다. {ctx.author.mention}님 감사합니다! 7일 연속 출석하여 {Coffee} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
         streak = 0  # 7일 달성 시 초기화
 
     # 기본 보상 지급
@@ -940,9 +940,9 @@ async def attendance_check(ctx):
 
     # 보상 지급 완료 메시지
     if boost_role in ctx.author.roles:
-        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+        await ctx.send(f"{ctx.author.mention}님! 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
     else:
-        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+        await ctx.send(f"{ctx.author.mention}님! 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
 
 
 # 가위바위보 이벤트 클래스 정의
