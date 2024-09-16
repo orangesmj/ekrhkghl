@@ -103,7 +103,7 @@ Cookie_M = "<:cookie_bundle_M:1270270764884688938>"    # 쿠키꾸러미(중) �
 Cookie_L = "<:cookie_bundle_L:1270270801970462805>"    # 쿠키꾸러미(대) 이모지 변수값
 Coffee = "<:Coffee:1271072742581600377>"                # 커피 이모지 변수값
 Ticket = "<:Premium_Ticket:1271017996864979026>"        # 티켓 이모지 변수값
-cncja_1 = "<:cookie_red:1270270636417220630>"
+cncja_1 = "<:cookie_red:1270270636417220630>"           #추첨 이모지 변수값
 # 가위바위보 이벤트 관련 이모지 설정
 rkdnl = "<:event_scissor:1270902821365223525>"        # 가위 이모지 변수값
 qkdnl = "<:event_rock:1270902812246675499>"           # 바위 이모지 변수값
@@ -582,12 +582,12 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
 @app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
 @app_commands.choices(
     item=[
-        app_commands.Choice(name="쿠키", value="쿠키"),
-        app_commands.Choice(name="커피", value="커피"),
-        app_commands.Choice(name="티켓", value="티켓"),
-        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
-        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
-        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
+        app_commands.Choice(name="쿠키", value=Cookie),
+        app_commands.Choice(name="커피", value=Coffee),
+        app_commands.Choice(name="티켓", value=Ticket),
+        app_commands.Choice(name="쿠키꾸러미(소)", value=Cookie_S),
+        app_commands.Choice(name="쿠키꾸러미(중)", value=Cookie_M),
+        app_commands.Choice(name="쿠키꾸러미(대)", value=Cookie_L),
     ]
 )
 async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
@@ -715,7 +715,7 @@ async def cookie_ranking(interaction: discord.Interaction):
     await interaction.response.send_message("\n".join(ranking_list))
 
     # 이벤트 메시지 전송
-    cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID에 맞게 수정하세요.
+    cncja_channel = bot.get_channel(cncja_1)  # 추첨 채널 ID에 맞게 수정하세요.
     message = await cncja_channel.send(embed=embed)
     await message.add_reaction(cncja_1)  # cncja_1은 <:cookie_red:1270270636417220630> 이모지입니다.
 
@@ -778,7 +778,6 @@ async def cookie_ranking(interaction: discord.Interaction):
     save_inventory(user_id, items)
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
-
 
 
 # 가위바위보 이벤트 클래스 정의
