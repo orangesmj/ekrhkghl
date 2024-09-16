@@ -19,12 +19,6 @@ def get_kst_time():
 TOKEN = os.environ.get("BOT_TOKEN")  # Discord 봇 토큰을 환경 변수에서 가져옵니다.
 mongo_url = os.environ.get("MONGO_URL")  # MongoDB 연결 URL을 환경 변수에서 가져옵니다.
 
-# 환경 변수 검증
-if not TOKEN:
-    raise ValueError("환경 변수 BOT_TOKEN이 설정되지 않았습니다.")
-
-if not mongo_url:
-    raise ValueError("환경 변수 MONGO_URL이 설정되지 않았습니다.")
 
 # MongoDB 연결 설정
 client = MongoClient(mongo_url)
