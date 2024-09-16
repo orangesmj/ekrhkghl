@@ -869,18 +869,35 @@ def is_coffee_active(user_id):
     if not coffee_usage or "last_used" not in coffee_usage:
         return False
 
-    # 커피 사용 시간
-    last_used = coffee_usage["last_used"]
-
-    # 현재 시간을 KST로 설정
+    # 커피 사용 시간에 시간대 설정
+    last_used = coffee_usage["last_used"].replace(tzinfo=timezone('Asia/Seoul'))
     current_time = datetime.now(timezone('Asia/Seoul'))
 
-    # 마지막 사용 시간에 KST 시간대 적용
-    last_used = last_used.replace(tzinfo=timezone('Asia/Seoul'))
-
     # 커피 사용 후 24시간이 경과했는지 확인
-    end_time = last_used + timedelta(hours=24)
-    return current_time < end_time
+    return current_time < last_used + timedelta(hours=24)
+
+# /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
+@bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
+async def use_coffee(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    items = load_inventory(user_id)
+
+    # 커피 수량 확인
+    if items.get("커피", 0) < 1:
+        await interaction.response.send_message("커피가 부족합니다. 커피를 소지하고 있어야 사용 가능합니다.", ephemeral=True)
+        return
+
+    # 커피 사용 처리
+    items["커피"] -= 1
+    save_inventory(user_id, items)
+
+    # 보상 증가 효과 활성화 기록
+    coffee_usage_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"last_used": datetime.now(timezone('Asia/Seoul'))}},
+        upsert=True
+    )
+    await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=False)
 
 
 # /오픈 명령어, 선물꾸러미 사용
@@ -931,7 +948,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     save_inventory(user_id, items)
 
     # 채널에 결과 메시지 전송
-    cookie_open_channel = bot.get_channel(Cookie_open)  # 채널 ID는 실제 설정된 변수명으로 변경 필요
+    cookie_open_channel = bot.get_channel(Cookie_open)
     await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
@@ -942,6 +959,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
         f"커피 사용: {coffee_active_text}", ephemeral=True
     )
+
 
 # /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
 @bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
