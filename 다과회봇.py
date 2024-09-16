@@ -140,8 +140,7 @@ def save_ban_list():
 
 # 입장 기록을 MongoDB에서 불러오는 함수
 def load_entry_list():
-    """MongoDB에서 입장 기록```python
-#을 불러옵니다."""
+    """MongoDB에서 입장 기록을 불러옵니다."""
     global entry_list
     entry_list = {int(doc["_id"]): doc["data"] for doc in entry_collection.find()}
     print(f"[DEBUG] 입장 기록 불러옴: {entry_list}")
@@ -342,8 +341,7 @@ async def rps_event():
 # 가위바위보 결과 발표 함수
 async def announce_rps_results(participants):
     """가위바위보 결과를 발표합니다."""
-    bot_choice = random.choice(['가위', '바위', '```python
-보'])  # 봇의 랜덤 선택
+    bot_choice = random.choice(['가위', '바위', '보'])  # 봇의 랜덤 선택
 
     # 결과 채널 가져오기
     result_channel = bot.get_channel(rkdnlqkdnlqh_result)
