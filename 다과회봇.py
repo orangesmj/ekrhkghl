@@ -600,6 +600,47 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
+
+    #회수 명령어
+    # 회수 명령어: 특정 유저의 인벤토리에서 아이템 회수
+@bot.tree.command(name="회수", description="특정 유저에게서 재화를 회수합니다.")
+@app_commands.describe(user="재화를 회수할 사용자를 선택하세요.", item="회수할 아이템", amount="회수할 개수")
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
+        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
+async def take_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
+    """회수 명령어를 통해 특정 유저에게서 아이템을 회수합니다."""
+    admin_role = interaction.guild.get_role(ad1)
+    if admin_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        return
+
+    # 인벤토리에서 아이템 회수
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    
+    if item not in valid_items:
+        await interaction.response.send_message(f"회수할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+    
+    # 회수할 아이템의 개수가 충분한지 확인
+    if items[item] < amount:
+        await interaction.response.send_message(f"{user.display_name}님의 {item} 개수가 부족합니다.", ephemeral=True)
+        return
+
+    # 인벤토리에서 아이템 회수
+    items[item] -= amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}님에게서 {item} {amount}개를 회수했습니다.")
+
     # 인벤토리에 아이템 추가
     user_id = str(user.id)
     items = load_inventory(user_id)
@@ -610,12 +651,12 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
 
     # 최대 획득량 설정 (예: 쿠키 최대 100개)
     max_amounts = {
-        "쿠키": 100,
-        "커피": 10,
-        "티켓": 5,
-        "쿠키꾸러미(소)": 50,
-        "쿠키꾸러미(중)": 30,
-        "쿠키꾸러미(대)": 20
+        "쿠키": 9999999,
+        "커피": 9999999,
+        "티켓": 9999999,
+        "쿠키꾸러미(소)": 9999999,
+        "쿠키꾸러미(중)": 9999999,
+        "쿠키꾸러미(대)": 9999999
     }
     max_amount = max_amounts.get(item, amount)
 
@@ -628,24 +669,43 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-#추첨 명령어
-@bot.tree.command(name="추첨", description="지급 품목, 소모 쿠키 개수, 시간을 설정하여 추첨을 시작합니다.")
-@app_commands.describe(item="지급 품목을 선택하세요 (Cookie, Cookie_S, Cookie_M, Cookie_L, Coffee)", 
-                       consume_cookies="소모할 쿠키 개수를 입력하세요.", 
-                       duration="추첨 시간을 초 단위로 입력하세요.")
-async def raffle(interaction: discord.Interaction, item: str, consume_cookies: int, duration: int):
-    """지급 품목, 소모 쿠키 개수, 시간을 설정하여 추첨을 시작합니다."""
-    valid_items = ["Cookie", "Cookie_S", "Cookie_M", "Cookie_L", "Coffee"]
-    if item not in valid_items:
-        await interaction.response.send_message(f"유효하지 않은 지급 품목입니다. {valid_items} 중 하나를 선택하세요.", ephemeral=True)
+# 지급 명령어: 특정 유저에게 아이템을 지급
+@bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
+@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
+        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
+async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
+    """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
+    admin_role = interaction.guild.get_role(ad1)
+    if admin_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
-    
-    embed = discord.Embed(
-        title="추첨이 시작되었습니다!",
-        description=f"지급 품목: {item}\n소모 쿠키: {consume_cookies}개\n참여하려면 아래 이모지를 클릭하세요.",
-        color=discord.Color.blue()
-    )
-    embed.set_footer(text=f"추첨 종료까지 {duration}초 남았습니다.")
+
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정을 9999999로 변경
+    max_amount = 9999999
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
     
     #인벤토리 기능
 @bot.tree.command(name="인벤토리", description="자신의 인벤토리를 확인합니다.")
@@ -737,12 +797,12 @@ async def cookie_ranking(interaction: discord.Interaction):
 
     # 최대 획득량 설정 (예: 쿠키 최대 100개)
     max_amounts = {
-        "쿠키": 100,
-        "커피": 10,
-        "티켓": 5,
-        "쿠키꾸러미(소)": 50,
-        "쿠키꾸러미(중)": 30,
-        "쿠키꾸러미(대)": 20
+        "쿠키": 9999999,
+        "커피": 9999999,
+        "티켓": 9999999,
+        "쿠키꾸러미(소)": 9999999,
+        "쿠키꾸러미(중)": 9999999,
+        "쿠키꾸러미(대)": 9999999
     }
     max_amount = max_amounts.get(item, amount)
 
