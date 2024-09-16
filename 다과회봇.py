@@ -858,25 +858,30 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
 
 # 커피 사용 여부를 확인하는 함수
 def is_coffee_active(user_id):
-    """커피 사용 후 24시간 동안 또는 10회 오픈 동안 활성 상태를 확인합니다."""
+    """커피 사용 후 24시간 동안 활성 상태를 확인하고 사용한 개수를 반환합니다."""
+    # 커피 사용 기록을 가져옴
     coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
+
+    # 기본 사용한 꾸러미 개수와 최대 개수
+    used_count = 0
+    max_count = 10
 
     # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
     if not coffee_usage or "last_used" not in coffee_usage:
-        return False
+        return False, used_count, max_count
 
-    last_used = coffee_usage["last_used"].replace(tzinfo=timezone('Asia/Seoul'))
+    # 현재 시간과 커피 사용 시간 비교
+    last_used = coffee_usage["last_used"]
     current_time = datetime.now(timezone('Asia/Seoul'))
 
-    # 24시간 경과 여부 확인
-    if current_time > last_used + timedelta(hours=24):
-        return False
+    # 사용한 꾸러미 개수 확인
+    used_count = coffee_usage.get("used_count", 0)
 
-    # 10회 오픈 제한 확인
-    if coffee_usage.get("open_count", 0) >= 10:
-        return False
+    # 커피 사용 후 24시간이 경과했는지 확인
+    coffee_active = current_time - last_used < timedelta(hours=24)
 
-    return True
+    return coffee_active, used_count, max_count
+
 
 
 # /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
@@ -927,14 +932,10 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
         return
 
-    # 커피 사용 여부 확인
+    # 커피 사용 여부 및 사용한 꾸러미 개수 확인
     coffee_active, used_count, max_count = is_coffee_active(user_id)
     multiplier = 1.5 if coffee_active else 1
     coffee_active_text = "O" if coffee_active else "X"
-
-    # 커피 사용 시 최대 허용 개수만큼만 처리
-    if coffee_active:
-        amount = min(amount, max_count - used_count)
 
     # 쿠키 지급 수량 설정
     if item == "쿠키꾸러미(소)":
@@ -947,33 +948,28 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     # 최종 지급 수량 계산
     total_reward = int(base_reward * multiplier) * amount
 
+    # 커피 효과 남은 사용 가능 개수 표시
+    remaining_uses = max(max_count - used_count, 0)
+
     # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
     items["쿠키"] += total_reward
     save_inventory(user_id, items)
 
-    # 남은 커피 효과 개수 업데이트
-    if coffee_active:
-        update_coffee_usage(user_id, used_count + amount)
-
     # 채널에 결과 메시지 전송
     cookie_open_channel = bot.get_channel(Cookie_open)
-    message = (
+    await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
-        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
+        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text} "
+        f"현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_uses}개"
     )
-    if coffee_active:
-        message += f" 현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {max_count - used_count}개"
-    await cookie_open_channel.send(message)
 
     # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
-        f"커피 사용: {coffee_active_text}", ephemeral=True
+        f"커피 사용: {coffee_active_text} 현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_uses}개",
+        ephemeral=True
     )
-
-
-
 
 
 
