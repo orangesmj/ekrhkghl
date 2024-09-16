@@ -858,53 +858,26 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
 
 # 커피 사용 여부를 확인하는 함수
 def is_coffee_active(user_id):
-    """커피 사용 후 24시간 동안 활성 상태를 확인하고 사용한 개수를 반환합니다."""
+    """커피 사용 후 24시간 동안 활성 상태를 확인합니다."""
     # 커피 사용 기록을 가져옴
     coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
 
-    # 기본 사용한 꾸러미 개수와 최대 개수
-    used_count = 0
-    max_count = 10
-
     # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
     if not coffee_usage or "last_used" not in coffee_usage:
-        return False, used_count, max_count
+        return False, 0, 10  # 기본 값을 반환
 
     # 현재 시간과 커피 사용 시간 비교
-    last_used = coffee_usage["last_used"]
-    current_time = datetime.now(timezone('Asia/Seoul'))
-
-    # 사용한 꾸러미 개수 확인
-    used_count = coffee_usage.get("used_count", 0)
+    last_used = coffee_usage["last_used"].astimezone(timezone('Asia/Seoul'))  # 시간대를 한국 시간대로 설정
+    current_time = datetime.now(timezone('Asia/Seoul'))  # 현재 시간도 한국 시간대로 설정
 
     # 커피 사용 후 24시간이 경과했는지 확인
     coffee_active = current_time - last_used < timedelta(hours=24)
 
+    # 사용 횟수와 최대 횟수를 설정
+    used_count = coffee_usage.get("used_count", 0)
+    max_count = coffee_usage.get("max_count", 10)
+
     return coffee_active, used_count, max_count
-
-
-
-# /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
-coffee_boost_users = {}  # 보상 증가 효과를 관리할 딕셔너리
-
-@bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
-async def use_coffee(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    items = load_inventory(user_id)
-
-    # 커피 수량 확인
-    if items.get("커피", 0) < 1:
-        await interaction.response.send_message("커피가 부족합니다. 커피를 소지하고 있어야 사용 가능합니다.", ephemeral=True)
-        return
-
-    # 커피 사용 처리
-    items["커피"] -= 1
-    save_inventory(user_id, items)
-    
-    # 보상 증가 효과 활성화: 24시간 동안 보상 1.5배 증가
-    coffee_boost_users[user_id] = datetime.now(timezone('Asia/Seoul')) + timedelta(hours=24)
-    await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=True)
-
 
 # /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
@@ -932,7 +905,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
         return
 
-    # 커피 사용 여부 및 사용한 꾸러미 개수 확인
+    # 커피 사용 여부 확인
     coffee_active, used_count, max_count = is_coffee_active(user_id)
     multiplier = 1.5 if coffee_active else 1
     coffee_active_text = "O" if coffee_active else "X"
@@ -948,28 +921,40 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     # 최종 지급 수량 계산
     total_reward = int(base_reward * multiplier) * amount
 
-    # 커피 효과 남은 사용 가능 개수 표시
-    remaining_uses = max(max_count - used_count, 0)
-
     # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
     items["쿠키"] += total_reward
     save_inventory(user_id, items)
 
+    # 커피 사용 시 개수 관리
+    if coffee_active:
+        used_count += amount
+        coffee_usage_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"used_count": used_count}},
+            upsert=True
+        )
+
     # 채널에 결과 메시지 전송
     cookie_open_channel = bot.get_channel(Cookie_open)
-    await cookie_open_channel.send(
-        f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
-        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text} "
-        f"현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_uses}개"
-    )
+    if coffee_active:
+        await cookie_open_channel.send(
+            f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
+            f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text} "
+            f"현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {max_count - used_count}개"
+        )
+    else:
+        await cookie_open_channel.send(
+            f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
+            f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
+        )
 
     # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
-        f"커피 사용: {coffee_active_text} 현재 사용 꾸러미 개수: {used_count}개 / 잔여 개수: {remaining_uses}개",
-        ephemeral=True
+        f"커피 사용: {coffee_active_text}", ephemeral=True
     )
+
 
 
 
