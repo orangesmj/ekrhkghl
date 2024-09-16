@@ -855,9 +855,6 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-from datetime import datetime, timedelta
-from pytz import timezone
-import random
 
 # 커피 사용 여부를 확인하는 함수
 def is_coffee_active(user_id):
@@ -959,34 +956,6 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
         f"커피 사용: {coffee_active_text}", ephemeral=True
     )
-
-
-# /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
-@bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
-async def use_coffee(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    items = load_inventory(user_id)
-
-    # 커피 수량 확인
-    if items.get("커피", 0) < 1:
-        await interaction.response.send_message("커피가 부족합니다. 커피를 소지하고 있어야 사용 가능합니다.", ephemeral=True)
-        return
-
-    # 커피 사용 처리
-    items["커피"] -= 1
-    save_inventory(user_id, items)
-    
-    # 보상 증가 효과 활성화: 24시간 동안 보상 1.5배 증가
-    end_time = datetime.now(timezone('Asia/Seoul')) + timedelta(hours=24)
-    coffee_usage_collection.update_one(
-        {"_id": user_id},
-        {"$set": {"end_time": end_time}},
-        upsert=True
-    )
-
-    await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=False)
-
-
 
 
 
