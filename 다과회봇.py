@@ -636,12 +636,12 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
 
     # 최대 획득량 설정 (예: 쿠키 최대 100개)
     max_amounts = {
-        "쿠키": 9999999,
-        "커피": 9999999,
-        "티켓": 9999999,
-        "쿠키꾸러미(소)": 9999999,
-        "쿠키꾸러미(중)": 9999999,
-        "쿠키꾸러미(대)": 9999999
+        "쿠키": 9999,
+        "커피": 9999,
+        "티켓": 9999,
+        "쿠키꾸러미(소)": 9999,
+        "쿠키꾸러미(중)": 9999,
+        "쿠키꾸러미(대)": 9999
     }
     max_amount = max_amounts.get(item, amount)
 
@@ -661,8 +661,8 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
         await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
         return
 
-    # 최대 획득량 설정을 9999999로 변경
-    max_amount = 9999999
+    # 최대 획득량 설정을 9999로 변경
+    max_amount = 9999
     final_amount = min(amount, max_amount)
 
     items[item] += final_amount
@@ -761,12 +761,12 @@ async def cookie_ranking(interaction: discord.Interaction):
 
     # 최대 획득량 설정 (예: 쿠키 최대 100개)
     max_amounts = {
-        "쿠키": 9999999,
-        "커피": 9999999,
-        "티켓": 9999999,
-        "쿠키꾸러미(소)": 9999999,
-        "쿠키꾸러미(중)": 9999999,
-        "쿠키꾸러미(대)": 9999999
+        "쿠키": 9999,
+        "커피": 9999,
+        "티켓": 9999,
+        "쿠키꾸러미(소)": 9999,
+        "쿠키꾸러미(중)": 9999,
+        "쿠키꾸러미(대)": 9999
     }
     max_amount = max_amounts.get(item, amount)
 
