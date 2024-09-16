@@ -855,6 +855,10 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
+from datetime import datetime, timedelta
+from pytz import timezone
+import random
+
 # 커피 사용 여부를 확인하는 함수
 def is_coffee_active(user_id):
     """커피 사용 후 24시간 동안 활성 상태를 확인합니다."""
@@ -862,18 +866,15 @@ def is_coffee_active(user_id):
     coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
 
     # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
-    if not coffee_usage or "last_used" not in coffee_usage:
+    if not coffee_usage or "end_time" not in coffee_usage:
         return False
 
-    # 현재 시간과 커피 사용 시간 비교
-    last_used = coffee_usage["last_used"]
+    # 현재 시간과 커피 사용 만료 시간 비교
+    end_time = coffee_usage["end_time"]
     current_time = datetime.now(timezone('Asia/Seoul'))
 
-    # 커피 사용 후 24시간이 경과했는지 확인
-    if current_time - last_used < timedelta(hours=24):
-        return True
-    else:
-        return False
+    # 커피 사용이 만료되었는지 확인
+    return current_time < end_time
 
 # /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
@@ -923,7 +924,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     save_inventory(user_id, items)
 
     # 채널에 결과 메시지 전송
-    cookie_open_channel = bot.get_channel(Cookie_open)
+    cookie_open_channel = bot.get_channel(Cookie_open)  # 채널 ID는 실제 설정된 변수명으로 변경 필요
     await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
@@ -935,13 +936,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         f"커피 사용: {coffee_active_text}", ephemeral=True
     )
 
-
-
-
-
 # /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
-coffee_boost_users = {}  # 보상 증가 효과를 관리할 딕셔너리
-
 @bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
 async def use_coffee(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
@@ -957,17 +952,15 @@ async def use_coffee(interaction: discord.Interaction):
     save_inventory(user_id, items)
     
     # 보상 증가 효과 활성화: 24시간 동안 보상 1.5배 증가
-    coffee_boost_users[user_id] = datetime.now() + timedelta(hours=24)
+    end_time = datetime.now(timezone('Asia/Seoul')) + timedelta(hours=24)
+    coffee_usage_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"end_time": end_time}},
+        upsert=True
+    )
+
     await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=False)
 
-# 보상 획득 함수 수정
-def apply_bonus(amount, max_amount, bonus_active, user_id):
-    """보너스를 적용하고 최대 획득량을 제한하는 함수입니다."""
-    if bonus_active or (user_id in coffee_boost_users and coffee_boost_users[user_id] > datetime.now()):
-        amount = int(amount * 1.5)
-        if amount > max_amount:
-            amount = max_amount
-    return amount
 
 
 
