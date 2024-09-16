@@ -856,11 +856,8 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
 
 
 # /오픈 명령어, 선물꾸러미 사용
-@bot.tree.command(name="오픈", description="선물 꾸러미를 열어 보상을 받습니다.")
-@app_commands.describe(
-    item="열고 싶은 선물 꾸러미를 선택하세요.",
-    amount="열고 싶은 개수를 입력하세요."
-)
+@bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
+@app_commands.describe(item="오픈할 선물 꾸러미", amount="오픈할 개수")
 @app_commands.choices(
     item=[
         app_commands.Choice(name="선물꾸러미(소)", value="쿠키꾸러미(소)"),
@@ -869,51 +866,53 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     ]
 )
 async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
-    """사용자가 선택한 선물 꾸러미를 열어 보상을 지급하는 함수입니다."""
+    """선물 꾸러미를 오픈하는 명령어입니다."""
     user_id = str(interaction.user.id)
     items = load_inventory(user_id)  # 유저의 인벤토리 불러오기
 
-    # 꾸러미 개수 확인
-    if items.get(item, 0) < amount:
-        await interaction.response.send_message(f"{interaction.user.mention}, {item}을(를) {amount}개 보유하고 있지 않습니다.", ephemeral=True)
+    # 유효한 꾸러미인지 확인
+    valid_bundles = ["쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_bundles:
+        await interaction.response.send_message(f"{item}은(는) 오픈할 수 없는 품목입니다.", ephemeral=True)
         return
 
-    # 보상 설정 (랜덤 범위로 설정)
-    reward_options = {
-        "쿠키꾸러미(소)": (2, 5),   # 소 꾸러미 열기 보상: 쿠키 2-5개 랜덤 지급
-        "쿠키꾸러미(중)": (5, 10),  # 중 꾸러미 열기 보상: 쿠키 5-10개 랜덤 지급
-        "쿠키꾸러미(대)": (10, 30), # 대 꾸러미 열기 보상: 쿠키 10-30개 랜덤 지급
-    }
+    # 소지한 수량 확인
+    if items.get(item, 0) < amount:
+        await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
+        return
 
     # 커피 사용 여부 확인
-    coffee_used = coffee_usage_collection.find_one({"_id": user_id})
-    coffee_status = "O" if coffee_used else "X"
-    multiplier = 1.5 if coffee_used else 1
+    coffee_active = is_coffee_active(user_id)
+    multiplier = 1.5 if coffee_active else 1
+    coffee_active_text = "O" if coffee_active else "X"
 
-    # 보상 지급
-    min_reward, max_reward = reward_options.get(item, (0, 0))
-    total_cookies = 0
-    for _ in range(amount):
-        reward_amount = random.randint(min_reward, max_reward)  # 랜덤 보상 수량 결정
-        total_reward = int(reward_amount * multiplier)
-        total_cookies += total_reward
-        items["쿠키"] += total_reward  # 쿠키 지급
+    # 쿠키 지급 수량 설정
+    if item == "쿠키꾸러미(소)":
+        base_reward = random.randint(2, 5)
+    elif item == "쿠키꾸러미(중)":
+        base_reward = random.randint(5, 10)
+    else:  # 쿠키꾸러미(대)
+        base_reward = random.randint(10, 30)
 
-    # 꾸러미 개수 감소
+    # 최종 지급 수량 계산
+    total_reward = int(base_reward * multiplier) * amount
+
+    # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
-    save_inventory(user_id, items)  # 인벤토리 저장
+    items["쿠키"] += total_reward
+    save_inventory(user_id, items)
 
-    # 쿠키 오픈 결과 채널 메시지 전송
-    cookiopen_channel = bot.get_channel(Cookie_open)  # Cookieopen 채널 ID
-    await cookiopen_channel.send(
+    # 채널에 결과 메시지 전송
+    cookie_open_channel = bot.get_channel(Cookiopen)
+    await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
-        f"쿠키를 {total_cookies}개 지급받으셨습니다!\n커피 사용: {coffee_status}"
+        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
     )
 
+    # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
-        f"{interaction.user.mention}, {item} {amount}개를 열었습니다. "
-        f"보상으로 {total_cookies}개의 쿠키를 받았습니다!",
-        ephemeral=True
+        f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
+        f"커피 사용: {coffee_active_text}", ephemeral=True
     )
 
 
