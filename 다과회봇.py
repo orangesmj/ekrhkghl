@@ -718,7 +718,7 @@ async def cookie_ranking(interaction: discord.Interaction):
 
 
 
-# 추첨 기능 구현 함수
+# 추첨 기능 명령어
 @bot.tree.command(name="추첨", description="아이템을 걸고 추첨 이벤트를 시작합니다.")
 @app_commands.describe(item="지급할 아이템", consume_cookies="참여 시 소모되는 쿠키 개수", duration="추첨 지속 시간 (초)", prize_amount="지급할 아이템 개수")
 @app_commands.choices(
@@ -732,8 +732,14 @@ async def cookie_ranking(interaction: discord.Interaction):
     ]
 )
 async def start_raffle(interaction: discord.Interaction, item: str, consume_cookies: int, duration: int, prize_amount: int):
+    # MS_3 역할 확인
+    server_manager_role = interaction.guild.get_role(MS_3)
+    if server_manager_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        return
+
     # 추첨 이벤트 시작 코드
-    cncja_channel = bot.get_channel(cncja_result)  # 추첨 결과 채널
+    cncja_channel = bot.get_channel(cncja)  # 채널 ID를 cncja로 수정했습니다.
     embed = discord.Embed(
         title="추첨 이벤트 시작!",
         description=(
@@ -771,6 +777,19 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
             await cncja_channel.send(f"{user.display_name}님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소진됩니다.", delete_after=5)
     except asyncio.TimeoutError:
         await cncja_channel.send("추첨 시간이 종료되었습니다.", delete_after=5)
+
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
+
 
     # 결과 발표
     if participants:
