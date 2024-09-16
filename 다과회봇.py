@@ -923,7 +923,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     save_inventory(user_id, items)
 
     # 채널에 결과 메시지 전송
-    cookie_open_channel = bot.get_channel(Cookiopen)
+    cookie_open_channel = bot.get_channel(Cookie_open)
     await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
