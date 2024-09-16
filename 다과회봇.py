@@ -576,7 +576,7 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     except Exception as e:
         await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# 지급 명령어: 특정 유저에게 아이템을 지급
+# 지급 명령어
 @bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
 @app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
 @app_commands.choices(
@@ -596,11 +596,57 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정
+    max_amount = 9999999  # 모든 아이템의 최대 획득량을 통일하여 9999999로 설정
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    
+    # 지급 완료 메시지
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-# 회수 명령어 정의
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정을 9999로 변경
+    max_amount = 9999
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+
+# 회수 명령어
 @bot.tree.command(name="회수", description="특정 유저의 재화를 회수합니다.")
 @app_commands.describe(user="회수할 사용자를 선택하세요.", item="회수할 아이템", amount="회수할 개수")
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
+        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
 async def retrieve_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
     """회수 명령어를 통해 특정 유저의 아이템을 회수합니다."""
     ms3_role = interaction.guild.get_role(MS_3)  # MS_3 역할 가져오기
@@ -621,54 +667,10 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
         await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items[item]}", ephemeral=True)
         return
 
+    # 아이템 회수 및 인벤토리 저장
     items[item] -= amount
-    save_inventory(user_id, items)
+    save_inventory(user_id, items)  # 회수한 후 인벤토리를 저장합니다.
     await interaction.response.send_message(f"{user.display_name}에게서 {item} {amount}개를 회수했습니다.", ephemeral=True)
-
-
-    # 인벤토리에 아이템 추가
-    user_id = str(user.id)
-    items = load_inventory(user_id)
-    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
-    if item not in valid_items:
-        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
-        return
-
-    # 최대 획득량 설정 (예: 쿠키 최대 100개)
-    max_amounts = {
-        "쿠키": 9999,
-        "커피": 9999,
-        "티켓": 9999,
-        "쿠키꾸러미(소)": 9999,
-        "쿠키꾸러미(중)": 9999,
-        "쿠키꾸러미(대)": 9999
-    }
-    max_amount = max_amounts.get(item, amount)
-
-    # 최대 획득량 제한
-    final_amount = min(amount, max_amount)
-
-    items[item] += final_amount
-    save_inventory(user_id, items)
-    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
-
-    # 인벤토리에 아이템 추가
-    user_id = str(user.id)
-    items = load_inventory(user_id)
-    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
-    if item not in valid_items:
-        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
-        return
-
-    # 최대 획득량 설정을 9999로 변경
-    max_amount = 9999
-    final_amount = min(amount, max_amount)
-
-    items[item] += final_amount
-    save_inventory(user_id, items)
-    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
     
     #인벤토리 기능
@@ -777,6 +779,45 @@ async def cookie_ranking(interaction: discord.Interaction):
     save_inventory(user_id, items)
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+# 출석 체크 
+@bot.command(name="출석체크", description="출석 체크를 통해 보상을 받습니다.")
+async def attendance_check(ctx):
+    # 유저 ID와 현재 날짜
+    user_id = str(ctx.author.id)
+    today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+
+    # 오늘 출석 체크 여부 확인
+    attendance_record = attendance_collection.find_one({"_id": user_id, "date": today_date})
+    if attendance_record:
+        await ctx.send(f"{ctx.author.mention}, 오늘 이미 출석체크를 하셨습니다!", delete_after=5)
+        return
+
+    # 인벤토리 가져오기
+    items = load_inventory(user_id)
+
+    # 기본 보상 지급
+    items["쿠키꾸러미(소)"] += 2  # 기본 보상 Cookie_S 2개 지급
+    # Boost 역할이 있을 경우 추가 보상
+    boost_role = ctx.guild.get_role(Boost)
+    if boost_role in ctx.author.roles:
+        items["쿠키꾸러미(중)"] += 1  # Boost 역할이 있을 경우 Cookie_M 1개 추가 지급
+
+    # 인벤토리 저장
+    save_inventory(user_id, items)
+
+    # 출석 기록 저장
+    attendance_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"date": today_date}},
+        upsert=True
+    )
+
+    # 보상 지급 완료 메시지
+    if boost_role in ctx.author.roles:
+        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요 !")
+    else:
+        await ctx.send(f"{ctx.author.mention}, 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요 !")
 
 # 가위바위보 이벤트 클래스 정의
 class RockPaperScissorsView(View):
