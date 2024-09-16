@@ -869,16 +869,15 @@ def is_coffee_active(user_id):
     if not coffee_usage or "last_used" not in coffee_usage:
         return False, used_count, max_count
 
-    # 현재 시간과 커피 사용 시간 비교
-    last_used = coffee_usage["last_used"]
-    current_time = datetime.now(timezone('Asia/Seoul'))
+    # 현재 시간과 커피 사용 시간 비교 (UTC로 통일)
+    last_used = coffee_usage["last_used"].astimezone(timezone.utc)  # 시간을 UTC로 변환
+    current_time = datetime.now(timezone.utc)  # 현재 시간도 UTC로 설정
+
+    # 사용한 꾸러미 개수 확인
+    used_count = coffee_usage.get("used_count", 0)
 
     # 커피 사용 후 24시간이 경과했는지 확인
     coffee_active = current_time - last_used < timedelta(hours=24)
-
-    # 사용한 꾸러미 개수 확인 (커피 사용 중일 때만 확인)
-    if coffee_active:
-        used_count = coffee_usage.get("used_count", 0)
 
     return coffee_active, used_count, max_count
 
