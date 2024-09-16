@@ -576,29 +576,26 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     except Exception as e:
         await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# 관리자 전용 아이템 지급 명령어
+# 지급 명령어: 특정 유저에게 아이템을 지급
 @bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
-@app_commands.describe(
-    user="재화를 지급할 사용자를 선택하세요.",
-    item="지급할 품목을 선택하세요.",
-    amount="지급할 개수를 입력하세요."
-)
+@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
 @app_commands.choices(
     item=[
-        discord.app_commands.Choice(name="쿠키", value="쿠키"),
-        discord.app_commands.Choice(name="커피", value="커피"),
-        discord.app_commands.Choice(name="티켓", value="티켓"),
-        discord.app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
-        discord.app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
-        discord.app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)")
+        app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
+        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
     ]
 )
 async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
     """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
-    admin_role = interaction.guild.get_role(ad1)  # 운영자 역할 ID 확인
+    admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
+
 
 
     #회수 명령어
@@ -667,27 +664,6 @@ async def take_item(interaction: discord.Interaction, user: discord.User, item: 
     save_inventory(user_id, items)
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
-
-
-# 지급 명령어: 특정 유저에게 아이템을 지급
-@bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
-@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
-@app_commands.choices(
-    item=[
-        app_commands.Choice(name="쿠키", value="쿠키"),
-        app_commands.Choice(name="커피", value="커피"),
-        app_commands.Choice(name="티켓", value="티켓"),
-        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
-        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
-        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
-    ]
-)
-async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
-    """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
-    admin_role = interaction.guild.get_role(ad1)
-    if admin_role not in interaction.user.roles:
-        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
-        return
 
     # 인벤토리에 아이템 추가
     user_id = str(user.id)
