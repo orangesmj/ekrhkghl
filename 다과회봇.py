@@ -855,7 +855,53 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-# 커피 사용 기능: 24시간 동안 보상 증가 효과 활성화
+# /오픈 명령어 = 선물꾸러미 사용
+@bot.tree.command(name="오픈", description="선물 꾸러미를 열어 보상을 받습니다.")
+@app_commands.describe(
+    item="열고 싶은 선물 꾸러미를 선택하세요.",
+    amount="열고 싶은 개수를 입력하세요."
+)
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="선물꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="선물꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="선물꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
+async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
+    """사용자가 선택한 선물 꾸러미를 열어 보상을 지급하는 함수입니다."""
+    user_id = str(interaction.user.id)
+    items = load_inventory(user_id)  # 유저의 인벤토리 불러오기
+
+    # 꾸러미 개수 확인
+    if items.get(item, 0) < amount:
+        await interaction.response.send_message(f"{interaction.user.mention}, {item}을(를) {amount}개 보유하고 있지 않습니다.", ephemeral=True)
+        return
+
+    # 보상 설정
+    reward_options = {
+        "쿠키꾸러미(소)": {"쿠키": 5},   # 소 꾸러미 열기 보상: 쿠키 5개
+        "쿠키꾸러미(중)": {"쿠키": 10},  # 중 꾸러미 열기 보상: 쿠키 10개
+        "쿠키꾸러미(대)": {"쿠키": 20},  # 대 꾸러미 열기 보상: 쿠키 20개
+    }
+
+    # 보상 지급
+    rewards = reward_options.get(item, {})
+    for reward_item, reward_amount in rewards.items():
+        items[reward_item] += reward_amount * amount  # 보상 수량만큼 지급
+
+    # 꾸러미 개수 감소
+    items[item] -= amount
+    save_inventory(user_id, items)  # 인벤토리 저장
+
+    await interaction.response.send_message(
+        f"{interaction.user.mention}, {item} {amount}개를 열었습니다. "
+        f"보상으로 {', '.join([f'{v}개 {k}' for k, v in rewards.items()])}을(를) 받았습니다!",
+        ephemeral=True
+    )
+
+
+# /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
 coffee_boost_users = {}  # 보상 증가 효과를 관리할 딕셔너리
 
 @bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
