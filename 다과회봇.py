@@ -855,7 +855,9 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-# /오픈 명령어 = 선물꾸러미 사용
+import random  # 랜덤 값을 위한 모듈 추가
+
+# /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 열어 보상을 받습니다.")
 @app_commands.describe(
     item="열고 싶은 선물 꾸러미를 선택하세요.",
@@ -878,27 +880,44 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         await interaction.response.send_message(f"{interaction.user.mention}, {item}을(를) {amount}개 보유하고 있지 않습니다.", ephemeral=True)
         return
 
-    # 보상 설정
+    # 보상 설정 (랜덤 범위로 설정)
     reward_options = {
-        "쿠키꾸러미(소)": {"쿠키": 5},   # 소 꾸러미 열기 보상: 쿠키 5개
-        "쿠키꾸러미(중)": {"쿠키": 10},  # 중 꾸러미 열기 보상: 쿠키 10개
-        "쿠키꾸러미(대)": {"쿠키": 20},  # 대 꾸러미 열기 보상: 쿠키 20개
+        "쿠키꾸러미(소)": (2, 5),   # 소 꾸러미 열기 보상: 쿠키 2-5개 랜덤 지급
+        "쿠키꾸러미(중)": (5, 10),  # 중 꾸러미 열기 보상: 쿠키 5-10개 랜덤 지급
+        "쿠키꾸러미(대)": (10, 30), # 대 꾸러미 열기 보상: 쿠키 10-30개 랜덤 지급
     }
 
+    # 커피 사용 여부 확인
+    coffee_used = coffee_usage_collection.find_one({"_id": user_id})
+    coffee_status = "O" if coffee_used else "X"
+    multiplier = 1.5 if coffee_used else 1
+
     # 보상 지급
-    rewards = reward_options.get(item, {})
-    for reward_item, reward_amount in rewards.items():
-        items[reward_item] += reward_amount * amount  # 보상 수량만큼 지급
+    min_reward, max_reward = reward_options.get(item, (0, 0))
+    total_cookies = 0
+    for _ in range(amount):
+        reward_amount = random.randint(min_reward, max_reward)  # 랜덤 보상 수량 결정
+        total_reward = int(reward_amount * multiplier)
+        total_cookies += total_reward
+        items["쿠키"] += total_reward  # 쿠키 지급
 
     # 꾸러미 개수 감소
     items[item] -= amount
     save_inventory(user_id, items)  # 인벤토리 저장
 
+    # 쿠키 오픈 결과 채널 메시지 전송
+    cookiopen_channel = bot.get_channel(1285358563149221918)  # Cookiopen 채널 ID
+    await cookiopen_channel.send(
+        f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
+        f"쿠키를 {total_cookies}개 지급받으셨습니다!\n커피 사용: {coffee_status}"
+    )
+
     await interaction.response.send_message(
         f"{interaction.user.mention}, {item} {amount}개를 열었습니다. "
-        f"보상으로 {', '.join([f'{v}개 {k}' for k, v in rewards.items()])}을(를) 받았습니다!",
+        f"보상으로 {total_cookies}개의 쿠키를 받았습니다!",
         ephemeral=True
     )
+
 
 
 # /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
