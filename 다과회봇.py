@@ -84,6 +84,7 @@ open_channel_id = 1281629317402460161  # 서버가 켜지면 알람이 뜰 채�
 
 # 새로운 변수 추가
 cnftjr = 1264398760499220570  # 출석 체크 메시지 채널 ID
+cncja = 1285220332235522131 #추첨 채널 ID
 cncja_result = 1285220422819774486  # 추첨 결과 채널 ID
 rkdnlqkdnlqh = 1285220522422173727  # 가위바위보 이벤트 채널 ID
 rkdnlqkdnlqh_result = 1285220550511431761  # 가위바위보 결과 채널 ID
@@ -712,51 +713,6 @@ async def cookie_ranking(interaction: discord.Interaction):
         return
 
     await interaction.response.send_message("\n".join(ranking_list))
-
-@bot.command(name="출석체크", help="출석 체크를 합니다.")
-async def attendance_check(ctx):
-    """유저의 출석 체크를 처리하는 명령어입니다."""
-    user_id = str(ctx.author.id)
-    today = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
-
-    # 출석 체크 여부 확인
-    attendance_record = attendance_collection.find_one({"_id": user_id})
-
-    # 오늘의 출석이 이미 기록된 경우
-    if attendance_record and today in attendance_record.get("dates", []):
-        await ctx.send(f"{ctx.author.mention}, 오늘 이미 출석체크를 하셨습니다!")
-        return
-
-    # 출석 체크 기록 갱신
-    if attendance_record:
-        attendance_collection.update_one(
-            {"_id": user_id},
-            {"$push": {"dates": today}}
-        )
-    else:
-        attendance_collection.insert_one(
-            {"_id": user_id, "dates": [today]}
-        )
-
-    # 항상 Cookie_S 아이템 2개 증정
-    items_collection.update_one(
-        {"_id": user_id},
-        {"$inc": {Cookie_S: 2}},
-        upsert=True
-    )
-
-    # Boost 역할이 있는지 확인
-    member = ctx.guild.get_member(ctx.author.id)
-    if any(role.id == Boost for role in member.roles):
-        # Boost 역할이 있을 경우 Cookie_M 아이템 1개 증정
-        items_collection.update_one(
-            {"_id": user_id},
-            {"$inc": {Cookie_M: 1}},
-            upsert=True
-        )
-
-    # 출석 체크 완료 메시지
-    await ctx.send(f"{ctx.author.mention}, 출석체크가 완료되었습니다! 선물꾸러미가 지급되었습니다. 인벤토리를 확인해주세요!")
 
     # 이벤트 메시지 전송
     cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID에 맞게 수정하세요.
