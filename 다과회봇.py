@@ -521,6 +521,7 @@ def is_duplicate_nickname(nickname, guild):
             return True
     return False
 
+
 # 슬래시 명령어: 차단된 사용자 목록을 보여주는 함수
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
@@ -577,13 +578,56 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
 
 # 관리자 전용 아이템 지급 명령어
 @bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
-@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
+@app_commands.describe(
+    user="재화를 지급할 사용자를 선택하세요.",
+    item="지급할 품목을 선택하세요.",
+    amount="지급할 개수를 입력하세요."
+)
+@app_commands.choices(
+    item=[
+        discord.app_commands.Choice(name="쿠키", value="쿠키"),
+        discord.app_commands.Choice(name="커피", value="커피"),
+        discord.app_commands.Choice(name="티켓", value="티켓"),
+        discord.app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        discord.app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        discord.app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)")
+    ]
+)
 async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
     """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
-    admin_role = interaction.guild.get_role(ad1)
+    admin_role = interaction.guild.get_role(ad1)  # 운영자 역할 ID 확인
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
+
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정 (예: 쿠키 최대 100개)
+    max_amounts = {
+        "쿠키": 100,
+        "커피": 10,
+        "티켓": 5,
+        "쿠키꾸러미(소)": 50,
+        "쿠키꾸러미(중)": 30,
+        "쿠키꾸러미(대)": 20
+    }
+    max_amount = max_amounts.get(item, amount)
+
+    # 최대 획득량 제한
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+
 #추첨 명령어
 @bot.tree.command(name="추첨", description="지급 품목, 소모 쿠키 개수, 시간을 설정하여 추첨을 시작합니다.")
 @app_commands.describe(item="지급 품목을 선택하세요 (Cookie, Cookie_S, Cookie_M, Cookie_L, Coffee)", 
@@ -603,6 +647,39 @@ async def raffle(interaction: discord.Interaction, item: str, consume_cookies: i
     )
     embed.set_footer(text=f"추첨 종료까지 {duration}초 남았습니다.")
     
+    #인벤토리 기능
+@bot.tree.command(name="인벤토리", description="자신의 인벤토리를 확인합니다.")
+@app_commands.describe(user="다른 사용자의 인벤토리를 확인하려면 별명을 입력하세요.")
+async def check_inventory(interaction: discord.Interaction, user: discord.User = None):
+    """자신 또는 다른 사용자의 인벤토리를 확인하는 명령어입니다."""
+    target_user = user if user else interaction.user
+    items = load_inventory(str(target_user.id))  # 유저의 인벤토리 불러오기
+    if not items:
+        await interaction.response.send_message(f"{target_user.display_name}님의 인벤토리를 찾을 수 없습니다.", ephemeral=True)
+        return
+    
+    # 인벤토리 정보 출력
+    embed = discord.Embed(
+        title=f"{target_user.display_name}님의 인벤토리",
+        description=f"쿠키: {items['쿠키']}개\n커피: {items['커피']}개\n티켓: {items['티켓']}개\n",
+        color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=embed)
+
+#쿠키랭킹 명령어
+@bot.tree.command(name="쿠키랭킹", description="서버 내 쿠키 보유자 TOP 10을 확인합니다.")
+async def cookie_ranking(interaction: discord.Interaction):
+    """서버 내 쿠키 보유자 TOP 10을 확인하는 명령어입니다."""
+    rankings = inventory_collection.find().sort("items.쿠키", -1).limit(10)
+    ranking_list = [f"{idx+1}등: {bot.get_user(int(entry['_id'])).display_name} (보유 쿠키 개수: {entry['items']['쿠키']})"
+                    for idx, entry in enumerate(rankings)]
+    
+    if not ranking_list:
+        await interaction.response.send_message("현재 쿠키 보유자가 없습니다.", ephemeral=True)
+        return
+
+    await interaction.response.send_message("\n".join(ranking_list))
+
     # 이벤트 메시지 전송
     cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID에 맞게 수정하세요.
     message = await cncja_channel.send(embed=embed)
