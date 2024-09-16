@@ -548,7 +548,7 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     """차단된 사용자를 해제하는 슬래시 명령어입니다."""
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
-        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.",
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.",ephemeral=True)
         return
 
     # 사용자 찾기: nickname과 last_nickname 모두 확인
