@@ -88,7 +88,7 @@ cncja_result = 1285220422819774486  # 추첨 결과 채널 ID
 cncja = 1285220332235522131
 rkdnlqkdnlqh = 1285220522422173727  # 가위바위보 이벤트 채널 ID
 rkdnlqkdnlqh_result = 1285220550511431761  # 가위바위보 결과 채널 ID
-
+Cookie_open = 1285358563149221918
 # 삭제된 메시지를 기록할 로그 채널 ID
 Rec = 1267642384108486656  # 전체 삭제 로그 채널 ID 변수
 
@@ -855,8 +855,6 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
-import random  # 랜덤 값을 위한 모듈 추가
-
 # /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 열어 보상을 받습니다.")
 @app_commands.describe(
@@ -906,7 +904,7 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     save_inventory(user_id, items)  # 인벤토리 저장
 
     # 쿠키 오픈 결과 채널 메시지 전송
-    cookiopen_channel = bot.get_channel(1285358563149221918)  # Cookiopen 채널 ID
+    cookiopen_channel = bot.get_channel(Cookie_open)  # Cookieopen 채널 ID
     await cookiopen_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_cookies}개 지급받으셨습니다!\n커피 사용: {coffee_status}"
