@@ -894,26 +894,27 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     else:  # 쿠키꾸러미(대)
         base_reward = random.randint(10, 30)
 
-    # 최종 지급 수량 계산
-    total_reward = int(base_reward * multiplier) * amount
+    # 최종 지급 수량 계산 (단, 최대 획득량 제한 적용)
+    total_reward = min(int(base_reward * multiplier), 9999999) * amount
 
     # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
     items["쿠키"] += total_reward
     save_inventory(user_id, items)
 
-    # 채널에 결과 메시지 전송
+    # 결과 메시지 전송 (모두가 볼 수 있게)
     cookie_open_channel = bot.get_channel(Cookiopen)
     await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
     )
 
-    # 유저에게 결과 메시지 전송
+    # 유저에게 결과 메시지 전송 (개인 메시지)
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
         f"커피 사용: {coffee_active_text}", ephemeral=True
     )
+
 
 
 
