@@ -855,6 +855,26 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
 
+# 커피 사용 여부를 확인하는 함수
+def is_coffee_active(user_id):
+    """커피 사용 후 24시간 동안 활성 상태를 확인합니다."""
+    # 커피 사용 기록을 가져옴
+    coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
+
+    # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
+    if not coffee_usage or "last_used" not in coffee_usage:
+        return False
+
+    # 현재 시간과 커피 사용 시간 비교
+    last_used = coffee_usage["last_used"]
+    current_time = datetime.now(timezone('Asia/Seoul'))
+
+    # 커피 사용 후 24시간이 경과했는지 확인
+    if current_time - last_used < timedelta(hours=24):
+        return True
+    else:
+        return False
+
 # /오픈 명령어, 선물꾸러미 사용
 @bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
 @app_commands.describe(item="오픈할 선물 꾸러미", amount="오픈할 개수")
@@ -894,26 +914,27 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
     else:  # 쿠키꾸러미(대)
         base_reward = random.randint(10, 30)
 
-    # 최종 지급 수량 계산 (단, 최대 획득량 제한 적용)
-    total_reward = min(int(base_reward * multiplier), 9999999) * amount
+    # 최종 지급 수량 계산
+    total_reward = int(base_reward * multiplier) * amount
 
     # 인벤토리에서 꾸러미 차감 및 쿠키 추가
     items[item] -= amount
     items["쿠키"] += total_reward
     save_inventory(user_id, items)
 
-    # 결과 메시지 전송 (모두가 볼 수 있게)
+    # 채널에 결과 메시지 전송
     cookie_open_channel = bot.get_channel(Cookiopen)
     await cookie_open_channel.send(
         f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
         f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text}"
     )
 
-    # 유저에게 결과 메시지 전송 (개인 메시지)
+    # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
         f"커피 사용: {coffee_active_text}", ephemeral=True
     )
+
 
 
 
