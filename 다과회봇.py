@@ -718,84 +718,72 @@ async def cookie_ranking(interaction: discord.Interaction):
 
 
 
-#추첨 명령어
-@bot.tree.command(name="추첨", description="지급할 아이템과 소모 쿠키 개수, 지속 시간을 설정하여 추첨을 시작합니다.")
-@app_commands.describe(
-    item="지급할 아이템을 선택하세요.",
-    amount="지급할 아이템의 개수를 입력하세요.",
-    consume_cookies="참여 시 소모되는 쿠키 개수를 입력하세요.",
-    duration="추첨이 진행될 시간을 초 단위로 입력하세요."
-)
+# 추첨 기능 구현 함수
+@bot.tree.command(name="추첨", description="아이템을 걸고 추첨 이벤트를 시작합니다.")
+@app_commands.describe(item="지급할 아이템", consume_cookies="참여 시 소모되는 쿠키 개수", duration="추첨 지속 시간 (초)", prize_amount="지급할 아이템 개수")
 @app_commands.choices(
     item=[
         app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
         app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
         app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
         app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
-        app_commands.Choice(name="커피", value="커피"),
-        app_commands.Choice(name="티켓", value="티켓"),
     ]
 )
-async def start_raffle(interaction: discord.Interaction, item: str, amount: int, consume_cookies: int, duration: int):
 async def start_raffle(interaction: discord.Interaction, item: str, consume_cookies: int, duration: int, prize_amount: int):
-    """추첨 명령어로 특정 아이템을 지급하며, 쿠키를 소모합니다."""
-    cncja_channel = bot.get_channel(cncja_result)  # 추첨 결과를 출력할 채널 ID
-    if not cncja_channel:
-        await interaction.response.send_message("추첨 결과를 출력할 채널을 찾을 수 없습니다.", ephemeral=True)
-        return
-    
-    # 추첨 명령어
+    # 추첨 이벤트 시작 코드
+    cncja_channel = bot.get_channel(cncja_result)  # 추첨 결과 채널
     embed = discord.Embed(
         title="추첨 이벤트 시작!",
         description=(
-            f"추첨에 참여하려면 아래 이모지를 눌러주세요!\n"
-            f"참여 시 {cncja_1} 쿠키 {consume_cookies}개가 소모됩니다.\n"
-            f"지급 아이템: {item}, 지급 개수: {prize_amount}개\n"
-            f"추첨 시간: {duration}초 동안 진행됩니다."
+            f"{item} {prize_amount}개가 걸려 있습니다!\n"
+            f"참여 시 쿠키 {consume_cookies}개가 소모됩니다.\n"
+            f"추첨은 {duration}초 동안 진행됩니다.\n"
+            f"{cncja_1} 이모지를 눌러 참여하세요!"
         ),
         color=discord.Color.gold()
     )
     message = await cncja_channel.send(embed=embed)
-    await message.add_reaction(cncja_1)  # cncja_1 이모지 추가
+    await message.add_reaction(cncja_1)  # 추첨 참여 이모지 추가
 
-    # 참여자 목록
+    # 참여자 추적을 위한 딕셔너리
     participants = {}
 
     # 리액션 체크 함수
     def check(reaction, user):
-        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants and not user.bot
+        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants
 
     # 추첨 진행
     try:
         while True:
             reaction, user = await bot.wait_for('reaction_add', timeout=duration, check=check)
+            # 인벤토리에서 쿠키 소모
             items = load_inventory(str(user.id))
-
-            # 쿠키 소모 여부 체크
             if items.get("쿠키", 0) < consume_cookies:
-                await cncja_channel.send(f"{user.display_name}님, 쿠키가 부족합니다. 참여할 수 없습니다.", delete_after=5)
+                await cncja_channel.send(f"{user.display_name}님, 쿠키가 부족하여 참여할 수 없습니다.", delete_after=5)
                 continue
 
             # 쿠키 소모 및 참여 등록
             items["쿠키"] -= consume_cookies
             save_inventory(str(user.id), items)
             participants[user.id] = user.display_name
-            await cncja_channel.send(f"{user.display_name}님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소모되었습니다.")
+            await cncja_channel.send(f"{user.display_name}님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소진됩니다.", delete_after=5)
     except asyncio.TimeoutError:
-        await cncja_channel.send("추첨 시간이 종료되었습니다.")
+        await cncja_channel.send("추첨 시간이 종료되었습니다.", delete_after=5)
 
     # 결과 발표
     if participants:
-        winner_id = random.choice(list(participants.keys()))
-        winner_name = participants[winner_id]
-        winner_items = load_inventory(str(winner_id))
-
-        # 아이템 지급
-        winner_items[item] = winner_items.get(item, 0) + prize_amount
-        save_inventory(str(winner_id), winner_items)
-        await cncja_channel.send(f"🎉 축하합니다! {winner_name}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
     else:
-        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.")
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
+
 
     # 인벤토리에 아이템 추가
     user_id = str(user.id)
