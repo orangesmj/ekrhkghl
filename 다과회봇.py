@@ -839,26 +839,31 @@ async def handle_duplicate_entry(user_id, channel):
         print(f"동일 접속 경고 메시지 전송 중 오류 발생: {e}")
 
 # 추첨 이벤트를 이어서 진행하는 함수
+# 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        # 여기서 remaining_time만큼 대기
+        # 이벤트가 종료되기까지 remaining_time만큼 대기합니다.
         await asyncio.sleep(remaining_time)
 
-        # 추첨 종료 로직
+        # 이벤트가 종료된 후 결과 처리
         cncja_channel = bot.get_channel(raffle["channel_id"])
         if not cncja_channel:
+            print("채널을 찾을 수 없습니다.")
             return
 
         participants = raffle.get("participants", [])
         if participants:
+            # 당첨자 선정
             winner_id = random.choice(participants)
             winner = bot.get_user(winner_id)
             if winner:
-                # 아이템 지급 로직
+                # 당첨자에게 아이템 지급
                 items = load_inventory(str(winner_id))
                 items[raffle["item"]] += raffle["prize_amount"]
                 save_inventory(str(winner_id), items)
-                await cncja_channel.send(f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!")
+                await cncja_channel.send(
+                    f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!"
+                )
             else:
                 await cncja_channel.send("당첨자를 찾을 수 없습니다.")
         else:
@@ -868,8 +873,9 @@ async def continue_raffle(raffle, remaining_time):
         raffle_collection.delete_one({"_id": raffle["_id"]})
 
     except Exception as e:
-        # try 블록이 제대로 닫히지 않으면 이 부분에서 SyntaxError가 발생할 수 있음
+        # try 블록 안에서만 작동하는 except 부분이 올바르게 연결된 경우에만 작동합니다.
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
+
 
 # 동일 ID 감지를 on_ready나 관련 이벤트에서 호출
 @bot.event
