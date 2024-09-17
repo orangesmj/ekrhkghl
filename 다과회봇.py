@@ -931,43 +931,53 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
         return
 
-    # 커피 사용 여부 및 사용한 꾸러미 개수 확인
-    coffee_active, used_count, max_count = is_coffee_active(user_id)
-    if coffee_active and used_count + amount > max_count:
+# 커피 사용 여부 및 사용한 꾸러미 개수 확인
+coffee_active, used_count, max_count = is_coffee_active(user_id)
+
+# 커피가 활성화된 경우에만 오픈 개수 제한 적용
+if coffee_active:
+    if used_count + amount > max_count:
         amount = max_count - used_count  # 최대 사용량을 초과하지 않도록 조정
         if amount <= 0:
-            await interaction.response.send_message(f"커피 사용으로 인해 더 이상 꾸러미를 오픈할 수 없습니다. 남은 사용 가능 개수: {max_count - used_count}개", ephemeral=True)
+            # 사용자가 커피 사용 한도를 초과했을 때 안내 메시지를 전송
+            await interaction.response.send_message(
+                f"커피 사용으로 인해 더 이상 꾸러미를 오픈할 수 없습니다. 남은 사용 가능 개수: {max_count - used_count}개", 
+                ephemeral=True
+            )
             return
+else:
+    # 커피를 사용하지 않은 경우에는 제한 없이 꾸러미를 오픈할 수 있음
+    print("커피 미사용 상태로 제한 없이 꾸러미를 오픈할 수 있습니다.")
 
-    # 보상 획득 로직 (개별 합산)
-    total_reward = 0
-    for _ in range(amount):
-        reward = calculate_reward(item, coffee_active)  # 보상 계산
-        total_reward += reward  # 개별 합산
+# 보상 획득 및 인벤토리 업데이트 로직
+total_reward = 0
+for _ in range(amount):
+    reward = calculate_reward(item, coffee_active)  # 보상 계산
+    total_reward += reward  # 개별 합산
 
-    # 인벤토리에서 꾸러미 차감 및 쿠키 추가
-    items[item] -= amount
-    items["쿠키"] += total_reward
-    save_inventory(user_id, items)
+# 인벤토리에서 꾸러미 차감 및 쿠키 추가
+items = load_inventory(user_id)
+items[item] -= amount
+items["쿠키"] += total_reward
+save_inventory(user_id, items)
 
-    # 커피 사용 시 남은 사용 가능 개수 업데이트
-    if coffee_active:
-        coffee_usage_collection.update_one(
-            {"_id": user_id},
-            {"$inc": {"used_count": amount}}
-        )
-        remaining_uses = max(max_count - (used_count + amount), 0)
-    else:
-        remaining_uses = 0
+# 커피 사용 시 남은 사용 가능 개수 업데이트
+if coffee_active:
+    coffee_usage_collection.update_one(
+        {"_id": user_id},
+        {"$inc": {"used_count": amount}}
+    )
+    remaining_uses = max(max_count - (used_count + amount), 0)
+else:
+    remaining_uses = 0
 
-    # 채널에 결과 메시지 전송
-    cookie_open_channel = bot.get_channel(Cookie_open)
-    if cookie_open_channel:
-        await cookie_open_channel.send(
-            f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
-            f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {'O' if coffee_active else 'X'} "
-            + (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else "")
-        )
+# 결과 메시지 전송
+await interaction.response.send_message(
+    f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
+    f"커피 사용: {'O' if coffee_active else 'X'} " +
+    (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else ""),
+    ephemeral=True
+)
 
     # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
