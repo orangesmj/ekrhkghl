@@ -633,6 +633,59 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
     await user.send(f"{item} {final_amount}개가 지급되었습니다.")
 
+# /전체지급 명령어: MS_3 역할만 사용 가능하고, 결과를 채널에 출력
+@bot.tree.command(name="전체지급", description="서버의 모든 사용자에게 선택한 품목과 개수를 지급합니다.")
+@app_commands.describe(item="지급할 아이템", amount="지급할 개수")
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="쿠키", value="쿠키"),
+        app_commands.Choice(name="커피", value="커피"),
+        app_commands.Choice(name="티켓", value="티켓"),
+        app_commands.Choice(name="쿠키꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="쿠키꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
+async def give_all(interaction: discord.Interaction, item: str, amount: int):
+    """서버의 모든 사용자에게 아이템을 지급하는 명령어입니다."""
+    # MS_3 역할이 있는지 체크 (서버장 역할)
+    ms3_role = interaction.guild.get_role(MS_3)  # MS_3 역할 ID 설정 필요
+    if ms3_role not in interaction.user.roles:
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다. (MS_3 역할 필요)", ephemeral=True)
+        return
+
+    # 명령어 실행 시 즉시 응답 전송
+    await interaction.response.defer()  # 응답 대기를 설정하여 타임아웃을 방지
+
+    # 서버의 모든 멤버를 가져옴
+    guild = interaction.guild
+    members = guild.members  # 모든 멤버 가져오기
+
+    # 지급 대상 목록 생성
+    success_count = 0
+
+    for member in members:
+        if member.bot:  # 봇을 제외하고 지급
+            continue
+
+        user_id = str(member.id)
+        items = load_inventory(user_id)  # 유저의 인벤토리 불러오기
+
+        # 아이템 지급 로직
+        if item not in items:
+            items[item] = 0  # 품목이 없다면 초기값 설정
+
+        items[item] += amount
+        save_inventory(user_id, items)
+        success_count += 1
+
+    # 지급 결과를 followup으로 전송
+    await interaction.followup.send(
+        f"서버의 모든 사용자에게 {item} {amount}개를 지급했습니다. 총 지급된 사용자: {success_count}명",
+        ephemeral=False  # 공개적으로 알림
+    )
+
+
 
 # 회수 명령어
 @bot.tree.command(name="회수", description="특정 유저의 재화를 회수합니다.")
@@ -931,61 +984,43 @@ async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
         await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
         return
 
-# 커피 사용 여부 및 사용한 꾸러미 개수 확인
-coffee_active, used_count, max_count = is_coffee_active(user_id)
+    # 커피 사용 여부 확인 (확률 변경을 위해 사용)
+    coffee_active, _, _ = is_coffee_active(user_id)  # 개수 제한 관련 부분 제거
 
-# 커피가 활성화된 경우에만 오픈 개수 제한 적용
-if coffee_active:
-    if used_count + amount > max_count:
-        amount = max_count - used_count  # 최대 사용량을 초과하지 않도록 조정
-        if amount <= 0:
-            # 사용자가 커피 사용 한도를 초과했을 때 안내 메시지를 전송
-            await interaction.response.send_message(
-                f"커피 사용으로 인해 더 이상 꾸러미를 오픈할 수 없습니다. 남은 사용 가능 개수: {max_count - used_count}개", 
-                ephemeral=True
-            )
-            return
-else:
-    # 커피를 사용하지 않은 경우에는 제한 없이 꾸러미를 오픈할 수 있음
-    print("커피 미사용 상태로 제한 없이 꾸러미를 오픈할 수 있습니다.")
+    # 보상 획득 로직 (확률 적용)
+    total_reward = 0
+    for _ in range(amount):
+        reward = calculate_reward(item, coffee_active)  # 커피 사용 여부에 따른 확률로 보상 계산
+        total_reward += reward  # 개별 합산
 
-# 보상 획득 및 인벤토리 업데이트 로직
-total_reward = 0
-for _ in range(amount):
-    reward = calculate_reward(item, coffee_active)  # 보상 계산
-    total_reward += reward  # 개별 합산
+    # 인벤토리에서 꾸러미 차감 및 쿠키 추가
+    items[item] -= amount
+    items["쿠키"] += total_reward
+    save_inventory(user_id, items)
 
-# 인벤토리에서 꾸러미 차감 및 쿠키 추가
-items = load_inventory(user_id)
-items[item] -= amount
-items["쿠키"] += total_reward
-save_inventory(user_id, items)
+    # 커피 사용 상태 기록 (개수 제한 없이 사용 여부만 기록)
+    if coffee_active:
+        coffee_usage_collection.update_one(
+            {"_id": user_id},
+            {"$set": {"last_used": datetime.now()}}  # 커피 사용 시간 갱신
+        )
 
-# 커피 사용 시 남은 사용 가능 개수 업데이트
-if coffee_active:
-    coffee_usage_collection.update_one(
-        {"_id": user_id},
-        {"$inc": {"used_count": amount}}
-    )
-    remaining_uses = max(max_count - (used_count + amount), 0)
-else:
-    remaining_uses = 0
-
-# 결과 메시지 전송
-await interaction.response.send_message(
-    f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
-    f"커피 사용: {'O' if coffee_active else 'X'} " +
-    (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else ""),
-    ephemeral=True
-)
+    # 채널에 결과 메시지 전송
+    cookie_open_channel = bot.get_channel(Cookie_open)
+    if cookie_open_channel:
+        await cookie_open_channel.send(
+            f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
+            f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {'O' if coffee_active else 'X'}"
+        )
 
     # 유저에게 결과 메시지 전송
     await interaction.response.send_message(
         f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
-        f"커피 사용: {'O' if coffee_active else 'X'} " + 
-        (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else ""),
+        f"커피 사용: {'O' if coffee_active else 'X'}",
         ephemeral=True
     )
+
+
 
 # 확률 테이블 검증 및 수정된 값
 normal_probabilities = {
