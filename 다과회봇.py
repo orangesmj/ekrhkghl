@@ -919,7 +919,7 @@ async def on_ready():
 
         # 이벤트 정보 삭제
         raffle_collection.delete_one({"_id": raffle["_id"]})
-    except Exception as e:
+except Exception as e:
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
 
 # 리액션 추가 시 추첨 이벤트 참여 처리
