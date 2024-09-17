@@ -816,28 +816,35 @@ async def resume_raffle_events():
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        # 여기에 적절한 코드를 넣거나 pass로 임시 처리
-        pass
-        # 동일 ID가 2번 이상 접속 시 감지 및 처리 함수 호출을 필요에 따라 여기에 추가
+        # 추후 구현할 추첨 이벤트 로직이 여기에 들어갈 예정입니다.
+        # 현재는 임시로 pass 처리되어 있으므로, 실제 이벤트 로직이 추가되면
+        # 예외 처리가 필요한 부분이 여기서 관리됩니다.
+        pass  
     except Exception as e:
+        # 만약 비동기 작업 중 에러가 발생하면 이 메시지가 출력됩니다.
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
 
 async def handle_duplicate_entry(user_id, channel):
     """동일한 유저가 2번 이상 접속할 시 경고 메시지를 전송합니다."""
-    # 현재 접속 중인 유저 리스트 가져오기
-    ongoing_entries = entry_collection.find({"user_id": user_id})
+    try:
+        # 현재 접속 중인 유저 리스트 가져오기 (MongoDB 최신 메서드로 변경)
+        ongoing_entries_count = entry_collection.count_documents({"user_id": user_id})
 
-    if ongoing_entries.count() > 1:
-        warning_message = f"<@{user_id}>님, 동일한 ID로 다수 접속이 감지되었습니다. 추가 접속을 자제해주세요."
-        await channel.send(warning_message)
+        if ongoing_entries_count > 1:
+            # 유저가 다수 접속된 경우 경고 메시지를 전송
+            warning_message = f"<@{user_id}>님, 동일한 ID로 다수 접속이 감지되었습니다. 추가 접속을 자제해주세요."
+            await channel.send(warning_message)
+    except Exception as e:
+        # MongoDB 조회나 메시지 전송 시 에러가 발생할 수 있으므로 예외 처리
+        print(f"동일 접속 경고 메시지 전송 중 오류 발생: {e}")
 
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        # remaining_time을 사용하여 대기
+        # 여기서 remaining_time만큼 대기
         await asyncio.sleep(remaining_time)
 
-        # 추첨 종료 로직 계속 진행
+        # 추첨 종료 로직
         cncja_channel = bot.get_channel(raffle["channel_id"])
         if not cncja_channel:
             return
@@ -861,6 +868,7 @@ async def continue_raffle(raffle, remaining_time):
         raffle_collection.delete_one({"_id": raffle["_id"]})
 
     except Exception as e:
+        # try 블록이 제대로 닫히지 않으면 이 부분에서 SyntaxError가 발생할 수 있음
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
 
 # 동일 ID 감지를 on_ready나 관련 이벤트에서 호출
