@@ -832,9 +832,10 @@ async def handle_duplicate_entry(user_id, channel):
         await channel.send(warning_message)
 
 # 추첨 이벤트를 이어서 진행하는 함수
-async def continue_raffle(raffle, remaining_time):
+async def continue_raffle(raffle, remaining_time):async def continue_raffle(raffle, remaining_time):
     try:
-        await asyncio.sleep(remaining_time)
+        await asyncio.sleep(remaining_time)  # 남은 시간만큼 대기
+
         # 이벤트 종료 처리
         cncja_channel = bot.get_channel(raffle["channel_id"])
         if not cncja_channel:
