@@ -834,7 +834,8 @@ async def handle_duplicate_entry(user_id, channel):
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        await asyncio.sleep(remaining_time)  # remaining_time을 사용하여 대기
+        # remaining_time을 사용하여 대기
+        await asyncio.sleep(remaining_time)
 
         # 추첨 종료 로직 계속 진행
         cncja_channel = bot.get_channel(raffle["channel_id"])
@@ -858,9 +859,6 @@ async def continue_raffle(raffle, remaining_time):
 
         # 이벤트 정보 삭제
         raffle_collection.delete_one({"_id": raffle["_id"]})
-
-    except Exception as e:
-        print(f"추첨 이벤트 진행 중 오류 발생: {e}")
 
     except Exception as e:
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
