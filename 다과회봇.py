@@ -829,12 +829,11 @@ async def handle_duplicate_entry(user_id, channel):
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
+        # 붙여넣은 코드가 제대로 들여쓰기 되어 있는지 확인하세요
         await asyncio.sleep(remaining_time)
         # 이벤트 종료 처리
         cncja_channel = bot.get_channel(raffle["channel_id"])
-        result_channel = bot.get_channel(cncja_result)  # 추첨 결과 채널
-
-        if not cncja_channel or not result_channel:
+        if not cncja_channel:
             return
 
         participants = raffle.get("participants", [])
