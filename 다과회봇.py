@@ -834,7 +834,6 @@ async def handle_duplicate_entry(user_id, channel):
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        # 붙여넣은 코드가 제대로 들여쓰기 되어 있는지 확인하세요
         await asyncio.sleep(remaining_time)
         # 이벤트 종료 처리
         cncja_channel = bot.get_channel(raffle["channel_id"])
@@ -850,18 +849,15 @@ async def continue_raffle(raffle, remaining_time):
                 items = load_inventory(str(winner_id))
                 items[raffle["item"]] += raffle["prize_amount"]
                 save_inventory(str(winner_id), items)
-                result_message = f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!"
-                await cncja_channel.send(result_message)
-                await result_channel.send(result_message)  # 결과 채널로 전송
+                await cncja_channel.send(f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!")
             else:
                 await cncja_channel.send("당첨자를 찾을 수 없습니다.")
-                await result_channel.send("당첨자를 찾을 수 없습니다.")
         else:
             await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.")
-            await result_channel.send("참여자가 없어 추첨이 취소되었습니다.")
 
         # 이벤트 정보 삭제
         raffle_collection.delete_one({"_id": raffle["_id"]})
+
     except Exception as e:
         print(f"추첨 이벤트 진행 중 오류 발생: {e}")
 
