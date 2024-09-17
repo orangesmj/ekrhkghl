@@ -342,8 +342,8 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, member)
-                    except Exception as e:
-                        await member.send(f"역할 부여 오류: {e}")
+                except Exception as e:  # 들여쓰기를 수정했습니다.
+                    await member.send(f"역할 부여 오류: {e}")
 
 # 메시지 삭제 시 로그를 기록하는 이벤트
 @bot.event
