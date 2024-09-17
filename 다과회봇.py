@@ -816,7 +816,12 @@ async def resume_raffle_events():
 # 추첨 이벤트를 이어서 진행하는 함수
 async def continue_raffle(raffle, remaining_time):
     try:
-        # 동일 ID가 2번 이상 접속 시 감지 및 처리
+        # 여기에 적절한 코드를 넣거나 pass로 임시 처리
+        pass
+        # 동일 ID가 2번 이상 접속 시 감지 및 처리 함수 호출을 필요에 따라 여기에 추가
+    except Exception as e:
+        print(f"추첨 이벤트 진행 중 오류 발생: {e}")
+
 async def handle_duplicate_entry(user_id, channel):
     """동일한 유저가 2번 이상 접속할 시 경고 메시지를 전송합니다."""
     # 현재 접속 중인 유저 리스트 가져오기
