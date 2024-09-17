@@ -11,7 +11,7 @@ import asyncio  # 비동기 처리를 위한 패키지
 # 한국 표준 시간(KST)으로 현재 시간을 반환하는 함수
 def get_kst_time():
     """한국 표준 시간대로 현재 시간을 반환합니다."""
-    kst = timezone('Asia/Seoul')
+    kst = pytz_timezone('Asia/Seoul')
     return datetime.now(kst).strftime('%Y-%m-%d %H:%M:%S')
 
 # 환경 변수에서 Discord 봇 토큰과 MongoDB URL을 가져옵니다.
@@ -375,7 +375,7 @@ class JoinFormModal(Modal):
         agreement_date = self.agreement_date.value
 
         # 현재 날짜를 'YYYY-MM-DD' 형식으로 한국 시간 기준으로 얻습니다.
-        today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+        today_date = datetime.now(pytz_timezone('Asia/Seoul')).strftime('%Y-%m-%d')
         nickname = self.nickname.value
         guild_name = self.guild_name.value
 
@@ -791,7 +791,7 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
         return
 
     # 시작 시간과 종료 시간 계산
-    start_time = datetime.now(timezone('Asia/Seoul'))
+    start_time = datetime.now(pytz_timezone('Asia/Seoul'))
     end_time = start_time + timedelta(seconds=duration)
     start_time_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
     end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -1077,7 +1077,7 @@ def calculate_reward(bundle_type, coffee_active):
 async def attendance_check(ctx):
     # 유저 ID와 현재 날짜
     user_id = str(ctx.author.id)
-    today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+    today_date = datetime.now(pytz_timezone('Asia/Seoul')).strftime('%Y-%m-%d')
 
     # 오늘 출석 체크 여부 확인
     attendance_record = attendance_collection.find_one({"_id": user_id, "last_date": today_date})
