@@ -8,7 +8,6 @@ from pymongo import MongoClient  # MongoDB 연결을 위한 패키지
 from pytz import timezone
 import random
 import asyncio  # 비동기 처리를 위한 패키지
-
 # 한국 표준 시간(KST)으로 현재 시간을 반환하는 함수
 def get_kst_time():
     """한국 표준 시간대로 현재 시간을 반환합니다."""
@@ -39,7 +38,6 @@ inventory_collection = db["inventory"]  # 유저의 재화(쿠키, 커피 등) �
 attendance_collection = db["attendance"]  # 출석 기록을 저장할 컬렉션
 coffee_usage_collection = db["coffee_usage"]  # 커피 사용 기록을 저장할 컬렉션
 bundle_open_count_collection = db["bundle_open_count"]  # 꾸러미 오픈 횟수 기록
-raffle_collection = db["raffle_events"]  # 추첨 이벤트 정보를 저장할 컬렉션
 
 # 봇의 인텐트를 설정합니다. 모든 필요한 인텐트를 활성화합니다.
 intents = discord.Intents.default()
@@ -225,57 +223,14 @@ def save_inventory(user_id, items):
     )
     print(f"[DEBUG] {user_id}의 인벤토리가 저장되었습니다: {items}")
 
-# 보상 계산 함수 (확률 적용)
-def calculate_reward(bundle_type, coffee_active):
-    """꾸러미 종류와 커피 사용 여부에 따라 보상을 계산합니다."""
-    # 일반 확률 테이블
-    normal_probabilities = {
-        '쿠키꾸러미(소)': [(2, 60), (3, 20), (4, 15), (5, 5)],
-        '쿠키꾸러미(중)': [(5, 35), (6, 25), (7, 15), (8, 10), (9, 8), (10, 7)],
-        '쿠키꾸러미(대)': [(10, 20), (14, 18), (19, 15), (24, 10), (29, 5), (30, 2)]
-    }
-    # 커피 사용 시 확률 테이블
-    coffee_probabilities = {
-        '쿠키꾸러미(소)': [(2, 30), (3, 25), (4, 25), (5, 20)],
-        '쿠키꾸러미(중)': [(5, 25), (6, 20), (7, 20), (8, 15), (9, 10), (10, 10)],
-        '쿠키꾸러미(대)': [(10, 15), (14, 15), (19, 12), (24, 10), (29, 6), (30, 5)]
-    }
-    probabilities = coffee_probabilities[bundle_type] if coffee_active else normal_probabilities[bundle_type]
-    rand_value = random.uniform(0, 100)
-    cumulative = 0
-    for reward, chance in probabilities:
-        cumulative += chance
-        if rand_value <= cumulative:
-            return reward
-    return probabilities[-1][0]  # 기본 값 반환
-
-# 커피 사용 여부 및 사용한 꾸러미 개수를 확인하는 함수
-def is_coffee_active(user_id):
-    """커피 사용 후 24시간 동안 활성 상태를 확인하고 사용한 개수를 반환합니다."""
-    # 커피 사용 기록을 가져옴
-    coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
-    # 기본 사용한 꾸러미 개수와 최대 개수
-    used_count = 0
-    max_count = 10
-    # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
-    if not coffee_usage or "last_used" not in coffee_usage:
-        return False, used_count, max_count
-    # 현재 시간과 커피 사용 시간 비교 (KST로 통일)
-    last_used = coffee_usage["last_used"].astimezone(timezone('Asia/Seoul'))
-    current_time = datetime.now(timezone('Asia/Seoul'))
-    # 사용한 꾸러미 개수 확인
-    used_count = coffee_usage.get("used_count", 0)
-    # 커피 사용 후 24시간이 경과했는지 확인
-    coffee_active = current_time - last_used < timedelta(hours=24)
-    if not coffee_active:
-        # 커피 효과가 만료되었을 경우 사용 횟수 초기화
-        coffee_usage_collection.update_one(
-            {"_id": user_id},
-            {"$set": {"used_count": 0}},
-            upsert=True
-        )
-        used_count = 0
-    return coffee_active, used_count, max_count
+# 보너스 적용 및 최대 획득량 제한 함수
+def apply_bonus(amount, max_amount, bonus_active):
+    """보너스를 적용하고 최대 획득량을 제한하는 함수입니다."""
+    if bonus_active:
+        amount = int(amount * 1.5)
+        if amount > max_amount:
+            amount = max_amount
+    return amount
 
 # 리액션을 통한 역할 부여 및 제거를 처리하는 함수
 async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji, role_id):
@@ -302,7 +257,7 @@ async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji
             except Exception as e:
                 await member.send(f"역할 부여 중 오류 발생: {e}")
 
-# 리액션 추가 시 호출되는 이벤트
+# 입장가이드, 가입 양식, 닉네임 변경 함수
 @bot.event
 async def on_raw_reaction_add(payload):
     """리액션 추가 시 호출되는 함수입니다."""
@@ -342,7 +297,7 @@ async def on_raw_reaction_add(payload):
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, member)
-                except Exception as e:  # 들여쓰기를 수정했습니다.
+                except Exception as e:
                     await member.send(f"역할 부여 오류: {e}")
 
 # 메시지 삭제 시 로그를 기록하는 이벤트
@@ -531,6 +486,7 @@ class NicknameChangeModal(Modal):
                 description=f"{self.member.mention} 닉네임이 변경되었습니다.",
                 color=discord.Color.green()
             )
+            embed.set_author(name=self.member.name, icon_url=self.member.avatar.url if self.member.avatar else None)
             embed.add_field(name="이전 닉네임", value=old_nick, inline=False)
             embed.add_field(name="변경된 닉네임", value=new_nickname, inline=False)
             await nick_log_channel.send(embed=embed)
@@ -565,7 +521,8 @@ def is_duplicate_nickname(nickname, guild):
             return True
     return False
 
-# 차단 목록 명령어
+
+# 차단 목록
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     """차단된 사용자의 목록을 보여주는 슬래시 명령어입니다."""
@@ -590,7 +547,7 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     """차단된 사용자를 해제하는 슬래시 명령어입니다."""
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
-        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
+        await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.",ephemeral=True)
         return
 
     # 사용자 찾기: nickname과 last_nickname 모두 확인
@@ -619,9 +576,9 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
     except Exception as e:
         await interaction.response.send_message(f"차단 해제 중 오류가 발생했습니다: {e}", ephemeral=True)
 
-# 지급 명령어 수정 (전체 유저에게도 지급 가능하도록 수정)
-@bot.tree.command(name="지급", description="특정 유저 또는 모든 유저에게 재화를 지급합니다.")
-@app_commands.describe(item="지급할 아이템", amount="지급할 개수", user="재화를 지급할 사용자를 선택하세요. (선택 사항)")
+# 지급 명령어
+@bot.tree.command(name="지급", description="특정 유저에게 재화를 지급합니다.")
+@app_commands.describe(user="재화를 지급할 사용자를 선택하세요.", item="지급할 아이템", amount="지급할 개수")
 @app_commands.choices(
     item=[
         app_commands.Choice(name="쿠키", value="쿠키"),
@@ -632,40 +589,50 @@ async def unban_user(interaction: discord.Interaction, nickname: str):
         app_commands.Choice(name="쿠키꾸러미(대)", value="쿠키꾸러미(대)"),
     ]
 )
-async def give_item(interaction: discord.Interaction, item: str, amount: int, user: discord.User = None):
-    """지급 명령어를 통해 특정 유저 또는 모든 유저에게 아이템을 지급합니다."""
+async def give_item(interaction: discord.Interaction, user: discord.User, item: str, amount: int):
+    """지급 명령어를 통해 특정 유저에게 아이템을 지급합니다."""
     admin_role = interaction.guild.get_role(ad1)
     if admin_role not in interaction.user.roles:
         await interaction.response.send_message("이 명령어를 사용할 권한이 없습니다.", ephemeral=True)
         return
 
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
     valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
     if item not in valid_items:
         await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
         return
 
     # 최대 획득량 설정
+    max_amount = 9999999  # 모든 아이템의 최대 획득량을 통일하여 9999999로 설정
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    
+    # 지급 완료 메시지
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
+        return
+
+    # 최대 획득량 설정을 9999로 변경
     max_amount = 9999
     final_amount = min(amount, max_amount)
 
-    if user is None:
-        # 모든 멤버에게 지급
-        for member in interaction.guild.members:
-            if member.bot:
-                continue
-            user_id = str(member.id)
-            items = load_inventory(user_id)
-            items[item] += final_amount
-            save_inventory(user_id, items)
-        await interaction.response.send_message(f"모든 유저에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-    else:
-        # 특정 멤버에게 지급
-        user_id = str(user.id)
-        items = load_inventory(user_id)
-        items[item] += final_amount
-        save_inventory(user_id, items)
-        await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-        await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
 
 # 회수 명령어
 @bot.tree.command(name="회수", description="특정 유저의 재화를 회수합니다.")
@@ -702,10 +669,11 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
 
     # 아이템 회수 및 인벤토리 저장
     items[item] -= amount
-    save_inventory(user_id, items)
+    save_inventory(user_id, items)  # 회수한 후 인벤토리를 저장합니다.
     await interaction.response.send_message(f"{user.display_name}에게서 {item} {amount}개를 회수했습니다.", ephemeral=True)
 
-# 인벤토리 기능
+    
+    #인벤토리 기능
 @bot.tree.command(name="인벤토리", description="자신의 인벤토리를 확인합니다.")
 @app_commands.describe(user="다른 사용자의 인벤토리를 확인하려면 별명을 입력하세요.")
 async def check_inventory(interaction: discord.Interaction, user: discord.User = None):
@@ -715,19 +683,19 @@ async def check_inventory(interaction: discord.Interaction, user: discord.User =
     if not items:
         await interaction.response.send_message(f"{target_user.display_name}님의 인벤토리를 찾을 수 없습니다.", ephemeral=True)
         return
-
+    
     # 인벤토리 정보 출력
     embed = discord.Embed(
         title=f"{target_user.display_name}님의 인벤토리",
-        description=(
-            f"{Cookie} 쿠키: {items['쿠키']}개\n"
-            f"{Coffee} 커피: {items['커피']}개\n"
-            f"{Ticket} 티켓: {items['티켓']}개\n"
-            f"{Cookie_S} 쿠키꾸러미(소): {items['쿠키꾸러미(소)']}개\n"
-            f"{Cookie_M} 쿠키꾸러미(중): {items['쿠키꾸러미(중)']}개\n"
-            f"{Cookie_L} 쿠키꾸러미(대): {items['쿠키꾸러미(대)']}개\n"
-        ),
-    )
+    description=(
+        f"{Cookie} 쿠키: {items['쿠키']}개\n"
+        f"{Coffee} 커피: {items['커피']}개\n"
+        f"{Ticket} 티켓: {items['티켓']}개\n"
+        f"{Cookie_S} 쿠키꾸러미(소): {items['쿠키꾸러미(소)']}개\n"
+        f"{Cookie_M} 쿠키꾸러미(중): {items['쿠키꾸러미(중)']}개\n"
+        f"{Cookie_L} 쿠키꾸러미(대): {items['쿠키꾸러미(대)']}개\n"
+    ),
+)
     await interaction.response.send_message(embed=embed)
 
 # 쿠키랭킹 명령어
@@ -735,13 +703,11 @@ async def check_inventory(interaction: discord.Interaction, user: discord.User =
 async def cookie_ranking(interaction: discord.Interaction):
     """서버 내 쿠키 보유자 TOP 10을 확인하는 명령어입니다."""
     rankings = inventory_collection.find().sort("items.쿠키", -1).limit(10)
-    ranking_list = []
-    for idx, entry in enumerate(rankings):
-        user = bot.get_user(int(entry['_id']))
-        if user:
-            ranking_list.append(
-                f"{idx + 1}등: {user.display_name} (보유 {Cookie} 개수: {entry['items']['쿠키']}개)"
-            )
+    ranking_list = [
+        f"{idx + 1}등: {bot.get_user(int(entry['_id'])).display_name} "
+        f"(보유 {Cookie} 개수: {entry['items']['쿠키']}개)"
+        for idx, entry in enumerate(rankings)
+    ]
 
     if not ranking_list:
         await interaction.response.send_message("현재 쿠키 보유자가 없습니다.", ephemeral=False)
@@ -749,7 +715,9 @@ async def cookie_ranking(interaction: discord.Interaction):
 
     await interaction.response.send_message("\n".join(ranking_list))
 
-# 추첨 명령어 수정 (이벤트 상태를 데이터베이스에 저장하여 재부팅 후에도 유지)
+
+
+# 추첨 명령어
 @bot.tree.command(name="추첨", description="아이템을 걸고 추첨 이벤트를 시작합니다.")
 @app_commands.describe(item="지급할 아이템", consume_cookies="참여 시 소모되는 쿠키 개수", duration="추첨 지속 시간 (초)", prize_amount="지급할 아이템 개수")
 @app_commands.choices(
@@ -776,7 +744,7 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
 
     # 추첨 이벤트 시작 메시지 전송
-    cncja_channel = bot.get_channel(cncja)  # 추첨 채널 ID 사용
+    cncja_channel = bot.get_channel(1285220332235522131)  # 채널 ID를 cncja로 수정했습니다.
     embed = discord.Embed(
         title="추첨 이벤트 시작!",
         description=(
@@ -791,166 +759,416 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     message = await cncja_channel.send(embed=embed)
     await message.add_reaction(cncja_1)  # 추첨 참여 이모지 추가
 
-    # 이벤트 정보를 데이터베이스에 저장
-    raffle_collection.insert_one({
-        "message_id": message.id,
-        "channel_id": cncja_channel.id,
-        "item": item,
-        "prize_amount": prize_amount,
-        "consume_cookies": consume_cookies,
-        "end_time": end_time,
-        "participants": [],
-        "guild_id": interaction.guild.id
-    })
+    # 참여자 추적을 위한 딕셔너리
+    participants = {}
 
-    await interaction.response.send_message("추첨 이벤트가 시작되었습니다!", ephemeral=True)
+    # 리액션 체크 함수
+    def check(reaction, user):
+        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants
 
-# 봇이 재시작될 때 진행 중인 추첨 이벤트를 복원하는 함수
-async def resume_raffle_events():
-    now = datetime.now(timezone('Asia/Seoul'))
-    ongoing_raffles = raffle_collection.find({"end_time": {"$gt": now}})
-    for raffle in ongoing_raffles:
-        remaining_time = (raffle["end_time"] - now).total_seconds()
-        bot.loop.create_task(continue_raffle(raffle, remaining_time))
-
-# 추첨 이벤트를 이어서 진행하는 함수
-async def continue_raffle(raffle, remaining_time):
+    # 추첨 진행
     try:
-        # 여기에 적절한 코드를 넣거나 pass로 임시 처리
-        pass
-        # 동일 ID가 2번 이상 접속 시 감지 및 처리 함수 호출을 필요에 따라 여기에 추가
-    except Exception as e:
-        print(f"추첨 이벤트 진행 중 오류 발생: {e}")
+        while True:
+            reaction, user = await bot.wait_for('reaction_add', timeout=duration, check=check)
+            # 인벤토리에서 쿠키 소모
+            items = load_inventory(str(user.id))
+            if items.get("쿠키", 0) < consume_cookies:
+                await cncja_channel.send(f"{user.display_name}님, 쿠키가 부족하여 참여할 수 없습니다.", delete_after=5)
+                continue
 
-async def handle_duplicate_entry(user_id, channel):
-    """동일한 유저가 2번 이상 접속할 시 경고 메시지를 전송합니다."""
-    # 현재 접속 중인 유저 리스트 가져오기
-    ongoing_entries = entry_collection.find({"user_id": user_id})
+            # 쿠키 소모 및 참여 등록
+            items["쿠키"] -= consume_cookies
+            save_inventory(str(user.id), items)
+            participants[user.id] = user.display_name
+            await cncja_channel.send(f"{user.display_name}님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소진됩니다.", delete_after=5)
+    except asyncio.TimeoutError:
+        await cncja_channel.send("추첨 시간이 종료되었습니다.", delete_after=5)
 
-    if ongoing_entries.count() > 1:
-        warning_message = f"<@{user_id}>님, 동일한 ID로 다수 접속이 감지되었습니다. 추가 접속을 자제해주세요."
-        await channel.send(warning_message)
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
 
-# 추첨 이벤트를 이어서 진행하는 함수
-async def continue_raffle(raffle, remaining_time):
-    try:
-        await asyncio.sleep(remaining_time)
-        # 이벤트 종료 처리
-        cncja_channel = bot.get_channel(raffle["channel_id"])
-        if not cncja_channel:
-            return
+    # 이벤트 메시지 자동 삭제
+    await asyncio.sleep(5)  # 5초 대기 후 삭제
+    await message.delete()  # 추첨 이벤트 메시지 삭제
 
-        participants = raffle.get("participants", [])
-        if participants:
-            winner_id = random.choice(participants)
-            winner = bot.get_user(winner_id)
-            if winner:
-                # 아이템 지급
-                items = load_inventory(str(winner_id))
-                items[raffle["item"]] += raffle["prize_amount"]
-                save_inventory(str(winner_id), items)
-                await cncja_channel.send(f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!")
-            else:
-                await cncja_channel.send("당첨자를 찾을 수 없습니다.")
-        else:
-            await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.")
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
 
-        # 이벤트 정보 삭제
-        raffle_collection.delete_one({"_id": raffle["_id"]})
 
-    except Exception as e:
-        print(f"추첨 이벤트 진행 중 오류 발생: {e}")
+    # 결과 발표
+    if participants:
+        winner = random.choice(list(participants.values()))
+        await cncja_channel.send(f"축하합니다! {winner}님이 {item} {prize_amount}개를 획득하셨습니다!")
+        # 당첨자에게 아이템 지급
+        winner_id = next(key for key, value in participants.items() if value == winner)
+        items = load_inventory(str(winner_id))
+        items[item] += prize_amount
+        save_inventory(str(winner_id), items)
+    else:
+        await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.", delete_after=5)
 
-# 동일 ID 감지를 on_ready나 관련 이벤트에서 호출
-@bot.event
-async def on_ready():
-    """봇이 준비되었을 때 실행되는 함수입니다."""
-    print(f'Logged in as {bot.user}')
-    load_nickname_history()  # 닉네임 기록을 불러옵니다.
-    load_ban_list()          # 차단 목록을 불러옵니다.
-    load_entry_list()        # 입장 기록을 불러옵니다.
-    load_exit_list()         # 퇴장 기록을 불러옵니다.
-    try:
-        await bot.tree.sync()  # 슬래시 명령어를 동기화합니다.
-        print("슬래시 명령어가 동기화되었습니다.")
-    except Exception as e:
-        print(f"명령어 동기화 중 오류 발생: {e}")
 
-    # 주기적인 태스크 시작
-    delete_messages_2.start() # 주기적인 메시지 삭제 태스크 시작
-    rps_event.start()         # 가위바위보 이벤트 태스크 시작
-
-    # 진행 중인 추첨 이벤트 복원
-    await resume_raffle_events()
-
-    # 봇이 활성화되었음을 알림
-    channel = bot.get_channel(open_channel_id)
-    if channel:
-        await channel.send('봇이 활성화되었습니다!')
-
-    # 동일 ID 감지 태스크 호출
-    for entry in entry_list:
-        await handle_duplicate_entry(entry['user_id'], channel)
-
-        await asyncio.sleep(remaining_time)
-        # 이벤트 종료 처리
-        cncja_channel = bot.get_channel(raffle["channel_id"])
-        if not cncja_channel:
-            return
-
-        participants = raffle.get("participants", [])
-        if participants:
-            winner_id = random.choice(participants)
-            winner = bot.get_user(winner_id)
-            if winner:
-                # 아이템 지급
-                items = load_inventory(str(winner_id))
-                items[raffle["item"]] += raffle["prize_amount"]
-                save_inventory(str(winner_id), items)
-                await cncja_channel.send(f"축하합니다! {winner.display_name}님이 {raffle['item']} {raffle['prize_amount']}개를 획득하셨습니다!")
-            else:
-                await cncja_channel.send("당첨자를 찾을 수 없습니다.")
-        else:
-            await cncja_channel.send("참여자가 없어 추첨이 취소되었습니다.")
-
-        # 이벤트 정보 삭제
-        raffle_collection.delete_one({"_id": raffle["_id"]})
-except Exception as e:
-        print(f"추첨 이벤트 진행 중 오류 발생: {e}")
-
-# 리액션 추가 시 추첨 이벤트 참여 처리
-@bot.event
-async def on_raw_reaction_add(payload):
-    if payload.user_id == bot.user.id:
+    # 인벤토리에 아이템 추가
+    user_id = str(user.id)
+    items = load_inventory(user_id)
+    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_items:
+        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
         return
 
-    # 진행 중인 추첨 이벤트 확인
-    raffle = raffle_collection.find_one({"message_id": payload.message_id})
-    if raffle and str(payload.emoji) == cncja_1:
-        user_id = payload.user_id
-        if user_id in raffle["participants"]:
-            # 이미 참여한 사용자
+    # 최대 획득량 설정 (예: 쿠키 최대 100개)
+    max_amounts = {
+        "쿠키": 9999,
+        "커피": 9999,
+        "티켓": 9999,
+        "쿠키꾸러미(소)": 9999,
+        "쿠키꾸러미(중)": 9999,
+        "쿠키꾸러미(대)": 9999
+    }
+    max_amount = max_amounts.get(item, amount)
+
+    # 최대 획득량 제한
+    final_amount = min(amount, max_amount)
+
+    items[item] += final_amount
+    save_inventory(user_id, items)
+    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
+    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+
+
+
+# 커피 사용 여부를 확인하는 함수
+def is_coffee_active(user_id):
+    """커피 사용 후 24시간 동안 활성 상태를 확인하고 사용한 개수를 반환합니다."""
+    # 커피 사용 기록을 가져옴
+    coffee_usage = coffee_usage_collection.find_one({"_id": user_id})
+
+    # 기본 사용한 꾸러미 개수와 최대 개수
+    used_count = 0
+    max_count = 10
+
+    # 커피를 사용한 적이 없거나 사용 시간이 기록되지 않은 경우
+    if not coffee_usage or "last_used" not in coffee_usage:
+        return False, used_count, max_count
+
+    # 현재 시간과 커피 사용 시간 비교 (UTC로 통일)
+    last_used = coffee_usage["last_used"].astimezone(timezone.utc)  # 시간을 UTC로 변환
+    current_time = datetime.now(timezone.utc)  # 현재 시간도 UTC로 설정
+
+    # 사용한 꾸러미 개수 확인
+    used_count = coffee_usage.get("used_count", 0)
+
+    # 커피 사용 후 24시간이 경과했는지 확인
+    coffee_active = current_time - last_used < timedelta(hours=24)
+
+    return coffee_active, used_count, max_count
+
+# /커피사용 명령어 24시간 동안 보상 증가 효과 활성화
+@bot.tree.command(name="커피사용", description="커피를 사용하여 보상 증가 효과를 활성화합니다.")
+async def use_coffee(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    items = load_inventory(user_id)
+
+    # 커피 수량 확인
+    if items.get("커피", 0) < 1:
+        await interaction.response.send_message("커피가 부족합니다. 커피를 소지하고 있어야 사용 가능합니다.", ephemeral=True)
+        return
+
+    # 커피 사용 처리
+    items["커피"] -= 1
+    save_inventory(user_id, items)
+
+    # 커피 사용 기록 업데이트
+    coffee_usage_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"last_used": datetime.now(timezone.utc), "used_count": 0}},  # 초기 사용 횟수 0으로 설정
+        upsert=True
+    )
+
+    await interaction.response.send_message("커피를 사용하여 24시간 동안 보상이 1.5배로 증가합니다!", ephemeral=True)
+
+# /오픈 명령어, 선물꾸러미 사용
+@bot.tree.command(name="오픈", description="선물 꾸러미를 오픈하여 쿠키를 획득합니다.")
+@app_commands.describe(item="오픈할 선물 꾸러미", amount="오픈할 개수")
+@app_commands.choices(
+    item=[
+        app_commands.Choice(name="선물꾸러미(소)", value="쿠키꾸러미(소)"),
+        app_commands.Choice(name="선물꾸러미(중)", value="쿠키꾸러미(중)"),
+        app_commands.Choice(name="선물꾸러미(대)", value="쿠키꾸러미(대)"),
+    ]
+)
+async def open_bundle(interaction: discord.Interaction, item: str, amount: int):
+    """선물 꾸러미를 오픈하는 명령어입니다."""
+    user_id = str(interaction.user.id)
+    items = load_inventory(user_id)  # 유저의 인벤토리 불러오기
+
+    # 유효한 꾸러미인지 확인
+    valid_bundles = ["쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
+    if item not in valid_bundles:
+        await interaction.response.send_message(f"{item}은(는) 오픈할 수 없는 품목입니다.", ephemeral=True)
+        return
+
+    # 소지한 수량 확인
+    if items.get(item, 0) < amount:
+        await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
+        return
+
+    # 커피 사용 여부 및 사용한 꾸러미 개수 확인
+    coffee_active, used_count, max_count = is_coffee_active(user_id)
+    if coffee_active and used_count + amount > max_count:
+        amount = max_count - used_count  # 최대 사용량을 초과하지 않도록 조정
+
+    # 보상 획득 로직
+    multiplier = 1.5 if coffee_active else 1
+    coffee_active_text = "O" if coffee_active else "X"
+
+    # 쿠키 지급 수량 설정
+    if item == "쿠키꾸러미(소)":
+        base_reward = random.randint(2, 5)
+    elif item == "쿠키꾸러미(중)":
+        base_reward = random.randint(5, 10)
+    else:  # 쿠키꾸러미(대)
+        base_reward = random.randint(10, 30)
+
+    # 최종 지급 수량 계산
+    total_reward = int(base_reward * multiplier) * amount
+
+    # 인벤토리에서 꾸러미 차감 및 쿠키 추가
+    items[item] -= amount
+    items["쿠키"] += total_reward
+    save_inventory(user_id, items)
+
+    # 커피 사용 시 남은 사용 가능 개수 업데이트
+    if coffee_active:
+        coffee_usage_collection.update_one(
+            {"_id": user_id},
+            {"$inc": {"used_count": amount}}
+        )
+        remaining_uses = max(max_count - (used_count + amount), 0)
+    else:
+        remaining_uses = 0
+
+    # 채널에 결과 메시지 전송
+    cookie_open_channel = bot.get_channel(Cookie_open)
+    await cookie_open_channel.send(
+        f"{interaction.user.display_name}님이 {item} {amount}개를 오픈하였습니다. "
+        f"쿠키를 {total_reward}개 지급 받으셨습니다! 커피 사용: {coffee_active_text} "
+        + (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else "")
+    )
+
+    # 유저에게 결과 메시지 전송
+    await interaction.response.send_message(
+        f"{item} {amount}개를 오픈하여 쿠키 {total_reward}개를 획득했습니다! "
+        f"커피 사용: {coffee_active_text} " + 
+        (f"현재 사용 꾸러미 개수: {used_count + amount}개 / 잔여 개수: {remaining_uses}개" if coffee_active else ""),
+        ephemeral=True
+    )
+
+
+
+
+
+# 출석 체크 
+@bot.command(name="출석체크", description="출석 체크를 통해 보상을 받습니다.")
+async def attendance_check(ctx):
+    # 유저 ID와 현재 날짜
+    user_id = str(ctx.author.id)
+    today_date = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d')
+
+    # 오늘 출석 체크 여부 확인
+    attendance_record = attendance_collection.find_one({"_id": user_id, "last_date": today_date})
+    if attendance_record:
+        await ctx.send(f"{ctx.author.mention}, 오늘 이미 출석체크를 하셨습니다!", delete_after=5)
+        return
+
+    # 인벤토리 가져오기
+    items = load_inventory(user_id)
+
+    # 출석 기록 불러오기
+    user_attendance = attendance_collection.find_one({"_id": user_id}) or {"streak": 0, "last_date": None}
+    last_date = user_attendance.get("last_date")
+    streak = user_attendance.get("streak", 0)
+
+    # 연속 출석 처리: 어제와의 차이가 1일이면 연속 출석 증가
+    if last_date and (datetime.strptime(today_date, '%Y-%m-%d') - datetime.strptime(last_date, '%Y-%m-%d')).days == 1:
+        streak += 1
+    else:
+        streak = 1  # 연속 출석이 끊겼을 경우 초기화
+
+    # 7일 연속 출석 시 커피 1개 지급
+    if streak == 7:
+        items["커피"] = items.get("커피", 0) + 1
+        await ctx.send(f"감사합니다. {ctx.author.mention}님 감사합니다! 7일 연속 출석하여 {Coffee} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+        streak = 0  # 7일 달성 시 초기화
+
+    # 기본 보상 지급
+    items["쿠키꾸러미(소)"] += 2  # 기본 보상 Cookie_S 2개 지급
+    # Boost 역할이 있을 경우 추가 보상
+    boost_role = ctx.guild.get_role(Boost)
+    if boost_role in ctx.author.roles:
+        items["쿠키꾸러미(중)"] += 1  # Boost 역할이 있을 경우 Cookie_M 1개 추가 지급
+
+    # 인벤토리 저장
+    save_inventory(user_id, items)
+
+    # 출석 기록 저장
+    attendance_collection.update_one(
+        {"_id": user_id},
+        {"$set": {"last_date": today_date, "streak": streak}},
+        upsert=True
+    )
+
+    # 보상 지급 완료 메시지
+    if boost_role in ctx.author.roles:
+        await ctx.send(f"{ctx.author.mention}님! 오늘도 와주셔서 감사합니다. {Cookie_S} 2개와 {Cookie_M} 1개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+    else:
+        await ctx.send(f"{ctx.author.mention}님! 오늘도 와주셔서 감사합니다. {Cookie_S} 2개를 증정해 드렸습니다. 인벤토리를 확인해주세요!")
+
+
+# 가위바위보 이벤트 클래스 정의
+class RockPaperScissorsView(View):
+    def __init__(self):
+        super().__init__(timeout=60)  # 1분 동안 반응 대기
+        self.participants = {}  # 참여자 딕셔너리: user_id -> choice
+
+    @discord.ui.button(label="가위", style=discord.ButtonStyle.primary, emoji=rkdnl)
+    async def scissors(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '가위')
+
+    @discord.ui.button(label="바위", style=discord.ButtonStyle.primary, emoji=qkdnl)
+    async def rock(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '바위')
+
+    @discord.ui.button(label="보", style=discord.ButtonStyle.primary, emoji=qh)
+    async def paper(self, interaction: discord.Interaction, button: Button):
+        await self.process_choice(interaction, '보')
+
+    async def process_choice(self, interaction: discord.Interaction, choice):
+        user_id = interaction.user.id
+        if user_id in self.participants:
+            await interaction.response.send_message("이미 참여하셨습니다.", ephemeral=True)
             return
 
-        # 인벤토리에서 쿠키 소모
+        # 인벤토리에서 쿠키 5개 소진
         items = load_inventory(str(user_id))
-        consume_cookies = raffle["consume_cookies"]
-        if items.get("쿠키", 0) < consume_cookies:
-            channel = bot.get_channel(payload.channel_id)
-            await channel.send(f"<@{user_id}>님, 쿠키가 부족하여 참여할 수 없습니다.")
+        if items.get("쿠키", 0) < 5:
+            await interaction.response.send_message("보유한 쿠키가 5개 이상 필요합니다.", ephemeral=True)
             return
 
-        items["쿠키"] -= consume_cookies
+        items["쿠키"] -= 5
         save_inventory(str(user_id), items)
 
-        # 참여자 목록에 추가
-        raffle_collection.update_one(
-            {"_id": raffle["_id"]},
-            {"$addToSet": {"participants": user_id}}
-        )
+        self.participants[user_id] = choice
+        await interaction.response.send_message(f"'{choice}'을(를) 선택하셨습니다!", ephemeral=True)
 
-        channel = bot.get_channel(payload.channel_id)
-        await channel.send(f"<@{user_id}>님이 추첨에 참여했습니다. 쿠키 {consume_cookies}개가 소진됩니다.")
+    async def on_timeout(self):
+        # 이벤트 종료 후 결과 처리
+        if not self.participants:
+            return  # 참여자가 없을 경우 종료
+
+        # 랜덤으로 봇의 선택
+        bot_choice = random.choice(['가위', '바위', '보'])
+
+        # 결과 채널 가져오기
+        result_channel = bot.get_channel(rkdnlqkdnlqh_result)
+        if not result_channel:
+            result_channel = bot.get_channel(cncja_result)  # 대체 채널
+
+        results = []
+        for user_id, choice in self.participants.items():
+            outcome = determine_rps_outcome(choice, bot_choice)
+            user = bot.get_user(user_id)
+            if user:
+                if outcome == "win":
+                    # 쿠키꾸러미(소) 4개 지급
+                    items = load_inventory(str(user_id))
+                    items["쿠키꾸러미(소)"] += 4
+                    save_inventory(str(user_id), items)
+                    results.append(f"{user.display_name}님이 이겼습니다! {Cookie_S} 4개가 지급되었습니다.")
+                elif outcome == "lose":
+                    results.append(f"{user.display_name}님이 졌습니다!")
+                else:
+                    results.append(f"{user.display_name}님이 비겼습니다!")
+
+        # 봇의 선택과 함께 결과 메시지 전송
+        embed = discord.Embed(title="가위바위보 결과", description=f"봇의 선택: {bot_choice}", color=discord.Color.blue())
+        embed.add_field(name="결과", value="\n".join(results), inline=False)
+        await result_channel.send(embed=embed)
+
+# 승리 로직 결정 함수
+def determine_rps_outcome(user_choice, bot_choice):
+    """사용자의 선택과 봇의 선택을 비교하여 승패를 결정합니다."""
+    rules = {
+        '가위': '보',  # 가위는 보를 이김
+        '바위': '가위',  # 바위는 가위를 이김
+        '보': '바위'   # 보는 바위를 이김
+    }
+
+    if user_choice == bot_choice:
+        return "draw"
+    elif rules[user_choice] == bot_choice:
+        return "win"
+    else:
+        return "lose"
+
+# 매일 오후 9시에 가위바위보 이벤트를 시작하는 태스크
+@tasks.loop(hours=24)
+async def rps_event():
+    """매일 오후 9시에 가위바위보 이벤트를 시작합니다."""
+    now = datetime.now(timezone('Asia/Seoul'))
+    target_time = now.replace(hour=21, minute=0, second=0, microsecond=0)
+    if now > target_time:
+        target_time += timedelta(days=1)
+    wait_seconds = (target_time - now).total_seconds()
+    await asyncio.sleep(wait_seconds)
+
+    # 이벤트 채널 가져오기
+    event_channel = bot.get_channel(rkdnlqkdnlqh)
+    if not event_channel:
+        event_channel = bot.get_channel(cncja_result)  # 대체 채널
+
+    # 이벤트 메시지 전송
+    embed = discord.Embed(
+        title="가위바위보 이벤트",
+        description=(
+            "가위바위보 이벤트가 시작되었습니다!\n"
+            "가위바위보 시 쿠키가 5개 소진됩니다.\n"
+            "가위바위보 승리 시, 쿠키꾸러미(소)가 4개 지급됩니다.\n"
+            "가위바위보는 아래 이모지를 누르면 자동 참여됩니다. (중복 참여 불가입니다.)"
+        ),
+        color=discord.Color.green()
+    )
+    message = await event_channel.send(embed=embed)
+
+    # 이모지 추가
+    await message.add_reaction(rkdnl)
+    await message.add_reaction(qkdnl)
+    await message.add_reaction(qh)
+
+    # 참여자를 저장할 딕셔너리
+    participants = {}
+
+    # 가위바위보 뷰 생성
+    view = RockPaperScissorsView()
+    await event_channel.send("가위바위보에 참여하려면 아래 이모지를 클릭하세요!", view=view)
 
 # 봇이 준비되었을 때 실행되는 이벤트
 @bot.event
@@ -971,119 +1189,170 @@ async def on_ready():
     delete_messages_2.start() # 주기적인 메시지 삭제 태스크 시작
     rps_event.start()         # 가위바위보 이벤트 태스크 시작
 
-    # 진행 중인 추첨 이벤트 복원
-    await resume_raffle_events()
-
     # 봇이 활성화되었음을 알림
     channel = bot.get_channel(open_channel_id)
     if channel:
         await channel.send('봇이 활성화되었습니다!')
 
+@bot.event
+async def on_message_delete(message):
+    """메시지 삭제 시 로그를 기록합니다."""
+    # 메시지가 봇이 작성한 것이거나, 특정 예외 채널에서 삭제된 경우 기록하지 않음
+    if message.author.bot or message.channel.id in [Ch_2, Ch_3]:
+        return
 
-# 메시지 삭제 태스크 (5분마다 실행)
-@tasks.loop(minutes=5)
-async def delete_messages_2():
-    """주기적으로 특정 채널의 메시지를 삭제합니다."""
-    # 예외로 처리할 메시지 ID 설정
-    exception_message_ids = [MS_1, MS_2]
-    target_channel = bot.get_channel(Ch_3)  # 삭제할 대상 채널
-
-    if not target_channel:
-        print("대상 채널을 찾을 수 없습니다.")
+    # 로그 채널 가져오기
+    log_channel = bot.get_channel(Rec)
+    if log_channel is None:
+        print("로그 채널을 찾을 수 없습니다.")
         return
 
     try:
-        async for message in target_channel.history(limit=100):
-            if message.id not in exception_message_ids and not message.author.bot:
+        # 삭제된 메시지의 기본 정보
+        deleted_message = (
+            f"**삭제된 메시지**\n"
+            f"**채널**: {message.channel.mention}\n"
+            f"**작성자**: {message.author.mention}\n"
+        )
+
+        # 메시지 내용 추가
+        if message.content:
+            deleted_message += f"**내용**: {message.content}\n"
+        else:
+            # 추가 콘텐츠를 검사
+            additional_content = []
+            if message.attachments:
+                attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
+                additional_content.append(f"**첨부 파일**:\n{attachment_urls}")
+
+            if message.embeds:
+                for index, embed in enumerate(message.embeds, start=1):
+                    embed_details = embed.to_dict()
+                    additional_content.append(f"**임베드 #{index}**: {embed_details}")
+
+            if message.stickers:
+                sticker_names = ", ".join([sticker.name for sticker in message.stickers])
+                additional_content.append(f"**스티커**: {sticker_names}")
+
+            if additional_content:
+                deleted_message += "\n".join(additional_content)
+            else:
+                deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
+
+        # 삭제된 메시지 정보를 임베드로 전송
+        embed = discord.Embed(description=deleted_message, color=discord.Color.red())
+        embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
+        await log_channel.send(embed=embed)
+        print("로그 채널에 삭제된 메시지가 전송되었습니다.")
+    except discord.HTTPException as e:
+        print(f"메시지 삭제 기록 중 오류 발생: {e}")
+        
+        
+        
+        #동일 ID가 2번 이상 접속했을 때,개인 DM으로 안내하는 명령어
+@bot.event
+async def on_member_join(member):
+    """멤버가 서버에 입장할 때 호출되는 함수입니다."""
+    user_id = str(member.id)
+
+    # 입장 기록 불러오기
+    if user_id not in entry_list:
+        entry_list[user_id] = {
+            "nickname": member.display_name,
+            "join_count": 1,
+            "last_join": get_kst_time()
+        }
+    else:
+        entry_list[user_id]["join_count"] += 1
+        entry_list[user_id]["last_join"] = get_kst_time()
+        
+        # 관리자 역할을 가진 모든 멤버에게 DM 발송
+        admin_role = member.guild.get_role(ad1)  # 관리자 역할 가져오기
+        if admin_role:
+            for admin in admin_role.members:
+                await admin.send(
+                    f"동일한 아이디가 다시 입장했습니다: {member.display_name}\n"
+                    f"퇴장 전 마지막 별명: {entry_list[user_id]['nickname']}"
+                )
+
+    # 입장 기록을 저장
+    save_entry_list()
+    print(f"{member.display_name}님이 입장하셨습니다.")
+
+
+
+# 닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다.
+@tasks.loop(minutes=3)
+async def delete_messages_2():
+    """닉네임 변경 및 가입 양식 채널의 메시지를 주기적으로 삭제하고 버튼을 다시 활성화합니다."""
+    nickname_channel = bot.get_channel(Ch_3)
+    if nickname_channel:
+        async for message in nickname_channel.history(limit=100):
+            if message.id != MS_2 and message.author == bot.user:
                 await message.delete()
-                print(f"{message.author}의 메시지를 삭제했습니다.")
-    except Exception as e:
-        print(f"메시지 삭제 중 오류 발생: {e}")
+                print(f"Deleted old nickname change button message from {message.author.display_name}")
+        await send_nickname_button(nickname_channel)
 
+    join_form_channel = bot.get_channel(Ch_2)
+    if join_form_channel:
+        async for message in join_form_channel.history(limit=100):
+            if message.id != MS_1 and message.author == bot.user:
+                await message.delete()
+                print(f"Deleted old join form button message from {message.author.display_name}")
+        await send_join_form_button(join_form_channel)
 
-# 가위바위보 이벤트 태스크 (매일 오후 9시 실행, 1시간 동안 진행)
-@tasks.loop(time=[datetime.time(hour=21, tzinfo=timezone('Asia/Seoul'))])
-async def rps_event():
-    """매일 오후 9시부터 10시까지 가위바위보 이벤트 실행."""
-    now = datetime.now(timezone('Asia/Seoul'))
-    end_time = now + timedelta(hours=1)  # 1시간 후 종료
-    event_channel = bot.get_channel(rkdnlqkdnlqh)
-
-    if not event_channel:
-        print("이벤트 채널을 찾을 수 없습니다.")
+@bot.event
+async def on_message_delete(message):
+    """메시지 삭제 시 로그를 기록합니다."""
+    # 메시지가 봇이 작성한 것이거나, 특정 예외 채널에서 삭제된 경우 기록하지 않음
+    if message.author.bot or message.channel.id in [Ch_2, Ch_3]:
         return
 
-    # 이벤트 메시지 전송
-    embed = discord.Embed(
-        title="가위바위보 이벤트",
-        description=(
-            "가위바위보 이벤트가 시작되었습니다!\n"
-            "가위바위보 시 쿠키가 5개 소진됩니다.\n"
-            "가위바위보 승리 시, 쿠키꾸러미(소)가 4개 지급됩니다.\n"
-            "가위바위보는 아래 이모지를 눌러 자동 참여됩니다. (중복 참여 불가)"
-        ),
-        color=discord.Color.green()
-    )
-    view = RockPaperScissorsView(end_time)
-    await event_channel.send(embed=embed, view=view)
+    # 로그 채널 가져오기
+    log_channel = bot.get_channel(Rec)
+    if log_channel is None:
+        print("로그 채널을 찾을 수 없습니다.")
+        return
 
+    try:
+        # 삭제된 메시지의 기본 정보
+        deleted_message = (
+            f"**삭제된 메시지**\n"
+            f"**채널**: {message.channel.mention}\n"
+            f"**작성자**: {message.author.mention}\n"
+        )
 
-# 가위바위보 이벤트 UI 클래스 정의
-class RockPaperScissorsView(View):
-    """가위바위보 이벤트의 UI를 구성하는 클래스입니다."""
-    def __init__(self, end_time):
-        super().__init__(timeout=(end_time - datetime.now(timezone('Asia/Seoul'))).total_seconds())
-        self.end_time = end_time
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """유저가 버튼을 클릭할 때 호출되는 함수입니다."""
-        if datetime.now(timezone('Asia/Seoul')) >= self.end_time:
-            await interaction.response.send_message("이벤트가 종료되었습니다.", ephemeral=True)
-            return False
-        return True
-
-    @discord.ui.button(label="가위", style=discord.ButtonStyle.primary, emoji=rkdnl)
-    async def scissors_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.process_choice(interaction, '가위')
-
-    @discord.ui.button(label="바위", style=discord.ButtonStyle.success, emoji=qkdnl)
-    async def rock_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.process_choice(interaction, '바위')
-
-    @discord.ui.button(label="보", style=discord.ButtonStyle.danger, emoji=qh)
-    async def paper_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.process_choice(interaction, '보')
-
-    async def process_choice(self, interaction: discord.Interaction, user_choice: str):
-        """유저의 선택을 처리하고 결과를 결정합니다."""
-        bot_choice = random.choice(['가위', '바위', '보'])
-        result = self.determine_result(user_choice, bot_choice)
-
-        # 결과에 따른 보상 처리
-        if result == "승리":
-            reward = 4  # 승리 시 지급할 쿠키꾸러미(소) 개수
-            user_id = str(interaction.user.id)
-            items = load_inventory(user_id)
-            items["쿠키꾸러미(소)"] += reward
-            save_inventory(user_id, items)
-            await interaction.response.send_message(f"축하합니다! {bot_choice}를 선택하여 승리했습니다! 쿠키꾸러미(소) {reward}개가 지급되었습니다.", ephemeral=True)
-        elif result == "패배":
-            await interaction.response.send_message(f"아쉽습니다! {bot_choice}를 선택하여 패배했습니다.", ephemeral=True)
+        # 메시지 내용 추가
+        if message.content:
+            deleted_message += f"**내용**: {message.content}\n"
         else:
-            await interaction.response.send_message(f"{bot_choice}를 선택하여 무승부입니다.", ephemeral=True)
+            # 추가 콘텐츠를 검사
+            additional_content = []
+            if message.attachments:
+                attachment_urls = "\n".join([attachment.url for attachment in message.attachments])
+                additional_content.append(f"**첨부 파일**:\n{attachment_urls}")
 
-    @staticmethod
-    def determine_result(user_choice, bot_choice):
-        """유저의 선택과 봇의 선택을 비교하여 결과를 반환합니다."""
-        if user_choice == bot_choice:
-            return "무승부"
-        elif (user_choice == '가위' and bot_choice == '보') or \
-             (user_choice == '바위' and bot_choice == '가위') or \
-             (user_choice == '보' and bot_choice == '바위'):
-            return "승리"
-        else:
-            return "패배"
+            if message.embeds:
+                for index, embed in enumerate(message.embeds, start=1):
+                    embed_details = embed.to_dict()
+                    additional_content.append(f"**임베드 #{index}**: {embed_details}")
 
+            if message.stickers:
+                sticker_names = ", ".join([sticker.name for sticker in message.stickers])
+                additional_content.append(f"**스티커**: {sticker_names}")
+
+            if additional_content:
+                deleted_message += "\n".join(additional_content)
+            else:
+                deleted_message += "**내용**: 메시지 내용이 없습니다.\n"
+
+        # 삭제된 메시지 정보를 로그 채널에 전송
+        embed = discord.Embed(description=deleted_message, color=discord.Color.red())
+        embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
+        await log_channel.send(embed=embed)
+        print("로그 채널에 삭제된 메시지가 전송되었습니다.")
+    except discord.HTTPException as e:
+        print(f"메시지 삭제 기록 중 오류 발생: {e}")
 
 
 # 봇 실행
