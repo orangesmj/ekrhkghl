@@ -410,13 +410,16 @@ class JoinFormModal(Modal):
         if role:
             try:
                 await self.member.add_roles(role)
-                await interaction.user.send(f"{role.name} 역할이 부여되었습니다!")
             except discord.Forbidden:
-                await interaction.user.send("권한이 없어 역할을 부여할 수 없습니다.")
+                await interaction.response.send_message(f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
+            ephemeral=True
+        )
             except discord.HTTPException as e:
-                await interaction.user.send(f"역할 부여 중 오류가 발생했습니다: {e}")
+                await interaction.response.send_message(
+            f"역할 부여 중 오류가 발생했습니다: {e}",
+            ephemeral=True
+        )
 
-        await interaction.user.send("가입 양식이 성공적으로 제출되었습니다!")
         await interaction.response.send_message("가입 양식이 성공적으로 제출되었습니다.", ephemeral=True)
 
 # 닉네임 변경 모달 창 클래스 정의
@@ -473,11 +476,17 @@ class NicknameChangeModal(Modal):
         if role:
             try:
                 await self.member.add_roles(role)
-                await interaction.user.send(f"{role.name} 역할이 부여되었습니다!")
+
             except discord.Forbidden:
-                await interaction.user.send("권한이 없어 역할을 부여할 수 없습니다.")
+                await interaction.response.send_message(
+            f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
+            ephemeral=True
+        )
             except discord.HTTPException as e:
-                await interaction.user.send(f"역할 부여 중 오류가 발생했습니다: {e}")
+                await interaction.response.send_message(
+                    f"역할 부여 중 오류가 발생했습니다: {e}",
+                    ephemeral=True
+                )
 
         nick_log_channel = bot.get_channel(Nick_ch)
         if nick_log_channel:
