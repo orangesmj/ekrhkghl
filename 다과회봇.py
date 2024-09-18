@@ -250,12 +250,11 @@ async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji
             try:
                 if add_role:
                     await member.add_roles(role)
-                    await member.send(f"{role.name} 역할이 부여되었습니다!")
                     channel = bot.get_channel(channel_id)
                     message = await channel.fetch_message(message_id)
                     await message.remove_reaction(emoji, member)
             except Exception as e:
-                await member.send(f"역할 부여 중 오류 발생: {e}")
+                (f"역할 부여 중 오류 발생: {e}")
 
 # 입장가이드, 가입 양식, 닉네임 변경 함수
 @bot.event
