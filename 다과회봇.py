@@ -269,17 +269,23 @@ async def on_raw_reaction_add(payload):
             role = guild.get_role(Role_5)
             if role:
                 try:
+                    # 역할 부여
                     await member.add_roles(role)
-                    await member.send(f"{role.name} 역할이 부여되었습니다!")
-                    print(f'{role.name} 역할이 {member.display_name}에게 부여되었습니다.')
+
+                    # 리액션 제거
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, member)
-                except discord.Forbidden:
-                    await member.send("권한이 없어 역할을 부여할 수 없습니다.")
-                except discord.HTTPException as e:
-                    await member.send(f"역할 부여 중 오류 발생: {e}")
 
+                # 오류 발생 시 아무것도 출력하지 않음
+                except discord.Forbidden:
+                    pass  # 권한이 없으면 아무 메시지도 출력하지 않음
+
+                except discord.HTTPException:
+                    pass  # HTTP 오류 발생 시 아무 메시지도 출력하지 않음
+
+@bot.event
+async def on_raw_reaction_add(payload):
     if payload.channel_id == Ch_3 and str(payload.emoji) in Sex:
         guild = bot.get_guild(payload.guild_id)
         member = guild.get_member(payload.user_id)
@@ -288,16 +294,23 @@ async def on_raw_reaction_add(payload):
             opposite_role = guild.get_role(Woman if str(payload.emoji) == '💙' else Man)
             if selected_role:
                 try:
+                    # 선택된 역할 부여
                     await member.add_roles(selected_role)
-                    await member.send(f'{selected_role.name} 역할이 부여되었습니다.')
+
+                    # 반대 역할 제거 (있을 경우)
                     if opposite_role in member.roles:
                         await member.remove_roles(opposite_role)
-                        await member.send(f'{opposite_role.name} 역할이 제거되었습니다.')
+
+                    # 리액션 제거
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, member)
-                except Exception as e:
-                    await member.send(f"역할 부여 오류: {e}")
+
+                # 오류 발생 시 아무 메시지도 출력하지 않음
+                except Exception:
+                    pass  # 에러 발생 시 조용히 무시
+
+
 
 # 메시지 삭제 시 로그를 기록하는 이벤트
 @bot.event
