@@ -307,10 +307,8 @@ async def on_raw_reaction_add(payload):
             if selected_role:
                 try:
                     await member.add_roles(selected_role)
-                    await member.send(f'{selected_role.name} 역할이 부여되었습니다.')
                     if opposite_role in member.roles:
                         await member.remove_roles(opposite_role)
-                        await member.send(f'{opposite_role.name} 역할이 제거되었습니다.')
                     channel = bot.get_channel(payload.channel_id)
                     message = await channel.fetch_message(payload.message_id)
                     await message.remove_reaction(payload.emoji, member)
@@ -532,8 +530,23 @@ async def send_join_form_button(channel):
 async def send_nickname_button(channel):
     """닉네임 변경 버튼을 전송하는 함수입니다."""
     button = Button(label="닉네임 변경", style=discord.ButtonStyle.primary)
+
     async def button_callback(interaction):
-        await interaction.response.send_modal(NicknameChangeModal(interaction.user))
+        # 사용자가 "💙" 또는 "❤️" 역할을 가지고 있는지 확인
+        member = interaction.guild.get_member(interaction.user.id)
+        man_role = interaction.guild.get_role(Man)  # 💙 역할
+        woman_role = interaction.guild.get_role(Woman)  # ❤️ 역할
+
+        # 성별 역할이 없으면 안내 메시지를 보내고 모달을 띄우지 않음
+        if man_role not in member.roles and woman_role not in member.roles:
+            await interaction.response.send_message(
+                "닉네임 변경은 위 이모지를 클릭하여 성별 선택 후 가능합니다.",
+                ephemeral=True  # 사용자에게만 보이도록 설정
+            )
+        else:
+            # 성별 역할이 있으면 닉네임 변경 모달을 보여줌
+            await interaction.response.send_modal(NicknameChangeModal(interaction.user))
+
     button.callback = button_callback
     view = View()
     view.add_item(button)
@@ -547,6 +560,7 @@ def is_duplicate_nickname(nickname, guild):
         if member.display_name.lower() == normalized_nickname:
             return True
     return False
+
 
 
 # 차단 목록
@@ -1659,18 +1673,6 @@ async def on_raw_reaction_add(payload):
         if member:
             selected_role = guild.get_role(Man if str(payload.emoji) == '💙' else Woman)
             opposite_role = guild.get_role(Woman if str(payload.emoji) == '💙' else Man)
-            if selected_role:
-                try:
-                    await member.add_roles(selected_role)
-                    await member.send(f'{selected_role.name} 역할이 부여되었습니다.')
-                    if opposite_role in member.roles:
-                        await member.remove_roles(opposite_role)
-                        await member.send(f'{opposite_role.name} 역할이 제거되었습니다.')
-                    channel = bot.get_channel(payload.channel_id)
-                    message = await channel.fetch_message(payload.message_id)
-                    await message.remove_reaction(payload.emoji, member)
-                except Exception as e:
-                    await member.send(f"역할 부여 오류: {e}")
 
 # 메시지 삭제 시 로그를 기록하는 이벤트
 @bot.event
@@ -1886,8 +1888,23 @@ async def send_join_form_button(channel):
 async def send_nickname_button(channel):
     """닉네임 변경 버튼을 전송하는 함수입니다."""
     button = Button(label="닉네임 변경", style=discord.ButtonStyle.primary)
+
     async def button_callback(interaction):
-        await interaction.response.send_modal(NicknameChangeModal(interaction.user))
+        # 사용자가 "💙" 또는 "❤️" 역할을 가지고 있는지 확인
+        member = interaction.guild.get_member(interaction.user.id)
+        man_role = interaction.guild.get_role(Man)  # 💙 역할
+        woman_role = interaction.guild.get_role(Woman)  # ❤️ 역할
+
+        if man_role not in member.roles and woman_role not in member.roles:
+            # 성별 역할이 없으면 안내 메시지를 해당 채널에 표시
+            await interaction.response.send_message(
+                "닉네임 변경은 위 이모지를 클릭하여 성별 선택 후 가능합니다.",
+                ephemeral=True  # 해당 사용자에게만 보이도록 설정
+            )
+        else:
+            # 성별 역할이 있으면 닉네임 변경 모달을 보여줌
+            await interaction.response.send_modal(NicknameChangeModal(interaction.user))
+
     button.callback = button_callback
     view = View()
     view.add_item(button)
@@ -1901,6 +1918,7 @@ def is_duplicate_nickname(nickname, guild):
         if member.display_name.lower() == normalized_nickname:
             return True
     return False
+
 
 
 # 차단 목록
