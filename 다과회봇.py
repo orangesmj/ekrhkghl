@@ -2,12 +2,17 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 from discord.ui import Button, View, Modal, TextInput
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
 from pytz import timezone as pytz_timezone
 import os
 from pymongo import MongoClient  # MongoDB 연결을 위한 패키지
 import random
 import asyncio  # 비동기 처리를 위한 패키지
+import logging
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+
 # 한국 표준 시간(KST)으로 현재 시간을 반환하는 함수
 def get_kst_time():
     """한국 표준 시간대로 현재 시간을 반환합니다."""
@@ -43,8 +48,11 @@ bundle_open_count_collection = db["bundle_open_count"]  # 꾸러미 오픈 횟�
 intents = discord.Intents.default()
 intents.members = True  # 멤버 관련 이벤트 허용
 intents.message_content = True  # 메시지 콘텐츠 접근 허용
-intents.messages = True  # 메시지 관련 이벤트 허용
+intents.messages = True  # 메시지 관련 이벤트 허용 (리액션 포함)
 intents.guilds = True  # 서버 관련 이벤트 허용
+# 최신 버전에서 필요할 경우 추가 인텐트 활성화
+# intents.reactions = True  # (옵션)
+
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 # 닉네임 변경 기록 및 입장/퇴장 기록을 저장할 딕셔너리
@@ -239,9 +247,13 @@ async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji
         return
 
     guild = bot.get_guild(payload.guild_id)
-    member = guild.get_member(payload.user_id)
+    if not guild:
+        logging.warning(f"길드 정보 없음: {payload.guild_id}")
+        return
 
-    if member is None or member.bot:
+    member = guild.get_member(payload.user_id)
+    if not member or member.bot:
+        logging.warning(f"멤버 정보 없음 또는 봇: {payload.user_id}")
         return
 
     if str(payload.emoji) == emoji:
@@ -253,66 +265,87 @@ async def handle_reaction(payload, add_role: bool, channel_id, message_id, emoji
                     channel = bot.get_channel(channel_id)
                     message = await channel.fetch_message(message_id)
                     await message.remove_reaction(emoji, member)
-            except Exception as e:
-                (f"역할 부여 중 오류 발생: {e}")
+                    logging.info(f"역할 {role.name}이(가) {member.display_name}에게 부여되었습니다.")
+            except discord.Forbidden:
+                logging.error(f"권한 오류: 역할 {role.name}을 부여할 수 없습니다.")
+            except discord.HTTPException as e:
+                logging.error(f"HTTP 오류 발생: {e}")
+        else:
+            logging.warning(f"역할을 찾을 수 없습니다: {role_id}")
+    else:
+        logging.info(f"이모지가 일치하지 않습니다: {str(payload.emoji)} != {emoji}")
 
-# 입장가이드, 가입 양식, 닉네임 변경 함수
+# 리액션 추가 시 호출되는 이벤트 핸들러 (단일 핸들러로 통합)
 @bot.event
 async def on_raw_reaction_add(payload):
     """리액션 추가 시 호출되는 함수입니다."""
+    logging.info("on_raw_reaction_add 이벤트 발생")
+    logging.debug(f"Payload: 채널 ID={payload.channel_id}, 메시지 ID={payload.message_id}, 사용자 ID={payload.user_id}, 이모지={payload.emoji}")
+
+    # Emoji_1과 Role_1 처리
     await handle_reaction(payload, True, Ch_1, Me_1, Emoji_1, Role_1)
 
+    # Ch_4, Me_2, Emoji_2, Role_5 처리
     if payload.channel_id == Ch_4 and payload.message_id == Me_2 and str(payload.emoji) == Emoji_2:
         guild = bot.get_guild(payload.guild_id)
+        if not guild:
+            logging.warning(f"길드 정보 없음: {payload.guild_id}")
+            return
+
         member = guild.get_member(payload.user_id)
-        if member:
-            role = guild.get_role(Role_5)
-            if role:
-                try:
-                    # 역할 부여
-                    await member.add_roles(role)
+        if not member:
+            logging.warning(f"멤버 정보 없음: {payload.user_id}")
+            return
 
-                    # 리액션 제거
-                    channel = bot.get_channel(payload.channel_id)
-                    message = await channel.fetch_message(payload.message_id)
-                    await message.remove_reaction(payload.emoji, member)
+        role = guild.get_role(Role_5)
+        if role:
+            try:
+                await member.add_roles(role)
+                channel = bot.get_channel(payload.channel_id)
+                message = await channel.fetch_message(payload.message_id)
+                await message.remove_reaction(payload.emoji, member)
+                logging.info(f"역할 {role.name}이(가) {member.display_name}에게 부여되었습니다.")
+            except discord.Forbidden:
+                logging.error(f"권한 오류: 역할 {role.name}을 부여할 수 없습니다.")
+            except discord.HTTPException as e:
+                logging.error(f"HTTP 오류 발생: {e}")
 
-                # 오류 발생 시 아무것도 출력하지 않음
-                except discord.Forbidden:
-                    pass  # 권한이 없으면 아무 메시지도 출력하지 않음
-
-                except discord.HTTPException:
-                    pass  # HTTP 오류 발생 시 아무 메시지도 출력하지 않음
-
-@bot.event
-async def on_raw_reaction_add(payload):
+    # Ch_3과 Sex 리스트에 포함된 이모지 처리
     if payload.channel_id == Ch_3 and str(payload.emoji) in Sex:
         guild = bot.get_guild(payload.guild_id)
+        if not guild:
+            logging.warning(f"길드 정보 없음: {payload.guild_id}")
+            return
+
         member = guild.get_member(payload.user_id)
-        if member:
-            selected_role = guild.get_role(Man if str(payload.emoji) == '💙' else Woman)
-            opposite_role = guild.get_role(Woman if str(payload.emoji) == '💙' else Man)
-            if selected_role:
-                try:
-                    # 선택된 역할 부여
-                    await member.add_roles(selected_role)
+        if not member:
+            logging.warning(f"멤버 정보 없음: {payload.user_id}")
+            return
 
-                    # 반대 역할 제거 (있을 경우)
-                    if opposite_role in member.roles:
-                        await member.remove_roles(opposite_role)
+        selected_role = guild.get_role(Man if str(payload.emoji) == '💙' else Woman)
+        opposite_role = guild.get_role(Woman if str(payload.emoji) == '💙' else Man)
 
-                    # 리액션 제거
-                    channel = bot.get_channel(payload.channel_id)
-                    message = await channel.fetch_message(payload.message_id)
-                    await message.remove_reaction(payload.emoji, member)
+        if selected_role:
+            try:
+                await member.add_roles(selected_role)
+                logging.info(f"역할 {selected_role.name}이(가) {member.display_name}에게 부여되었습니다.")
 
-                # 오류 발생 시 아무 메시지도 출력하지 않음
-                except Exception:
-                    pass  # 에러 발생 시 조용히 무시
+                if opposite_role and opposite_role in member.roles:
+                    await member.remove_roles(opposite_role)
+                    logging.info(f"역할 {opposite_role.name}이(가) {member.display_name}에게서 제거되었습니다.")
 
+                channel = bot.get_channel(payload.channel_id)
+                message = await channel.fetch_message(payload.message_id)
+                await message.remove_reaction(payload.emoji, member)
+                logging.info(f"리액션 {str(payload.emoji)}이(가) {member.display_name}에게서 제거되었습니다.")
+            except discord.Forbidden:
+                logging.error(f"권한 오류: 역할 {selected_role.name}을 부여할 수 없습니다.")
+            except discord.HTTPException as e:
+                logging.error(f"HTTP 오류 발생: {e}")
+        else:
+            logging.warning(f"선택된 역할을 찾을 수 없습니다: {Man if str(payload.emoji) == '💙' else Woman}")
 
-
-# 메시지 삭제 시 로그를 기록하는 이벤트
+# 메시지 삭제 시 로그를 기록하는 이벤트 (단일 핸들러로 통합)
 @bot.event
 async def on_message_delete(message):
     """메시지 삭제 시 로그를 기록합니다."""
@@ -323,7 +356,7 @@ async def on_message_delete(message):
     # 로그 채널 가져오기
     log_channel = bot.get_channel(Rec)
     if log_channel is None:
-        print("로그 채널을 찾을 수 없습니다.")
+        logging.warning("로그 채널을 찾을 수 없습니다.")
         return
 
     try:
@@ -362,9 +395,9 @@ async def on_message_delete(message):
         embed = discord.Embed(description=deleted_message, color=discord.Color.red())
         embed.set_author(name=str(message.author), icon_url=message.author.avatar.url if message.author.avatar else None)
         await log_channel.send(embed=embed)
-        print("로그 채널에 삭제된 메시지가 전송되었습니다.")
+        logging.info("로그 채널에 삭제된 메시지가 전송되었습니다.")
     except discord.HTTPException as e:
-        print(f"메시지 삭제 기록 중 오류 발생: {e}")
+        logging.error(f"메시지 삭제 기록 중 오류 발생: {e}")
 
 # 가입 양식 작성 모달 창 클래스 정의
 class JoinFormModal(Modal):
@@ -423,14 +456,15 @@ class JoinFormModal(Modal):
             try:
                 await self.member.add_roles(role)
             except discord.Forbidden:
-                await interaction.response.send_message(f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
-            ephemeral=True
-        )
+                await interaction.response.send_message(
+                    f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
+                    ephemeral=True
+                )
             except discord.HTTPException as e:
                 await interaction.response.send_message(
-            f"역할 부여 중 오류가 발생했습니다: {e}",
-            ephemeral=True
-        )
+                    f"역할 부여 중 오류가 발생했습니다: {e}",
+                    ephemeral=True
+                )
 
         await interaction.response.send_message("가입 양식이 성공적으로 제출되었습니다.", ephemeral=True)
 
@@ -456,10 +490,13 @@ class NicknameChangeModal(Modal):
             admin_role = interaction.guild.get_role(ad1)
             if admin_role:
                 for admin in admin_role.members:
-                    await admin.send(
-                        f"{interaction.user.mention} 님이 이미 사용 중인 닉네임으로 변경하려고 시도했습니다.\n"
-                        f"현재 닉네임: {old_nick}\n변경 시도 닉네임: {new_nickname}"
-                    )
+                    try:
+                        await admin.send(
+                            f"{interaction.user.mention} 님이 이미 사용 중인 닉네임으로 변경하려고 시도했습니다.\n"
+                            f"현재 닉네임: {old_nick}\n변경 시도 닉네임: {new_nickname}"
+                        )
+                    except discord.Forbidden:
+                        logging.warning(f"{admin.display_name}에게 DM을 보낼 수 없습니다.")
             return
 
         try:
@@ -488,12 +525,11 @@ class NicknameChangeModal(Modal):
         if role:
             try:
                 await self.member.add_roles(role)
-
             except discord.Forbidden:
                 await interaction.response.send_message(
-            f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
-            ephemeral=True
-        )
+                    f"{interaction.user.display_name}님에게 권한이 없어 역할을 부여할 수 없습니다.",
+                    ephemeral=True
+                )
             except discord.HTTPException as e:
                 await interaction.response.send_message(
                     f"역할 부여 중 오류가 발생했습니다: {e}",
@@ -542,8 +578,7 @@ def is_duplicate_nickname(nickname, guild):
             return True
     return False
 
-
-# 차단 목록
+# 차단 목록을 보여주는 명령어
 @bot.tree.command(name="차단목록", description="차단된 사용자 목록을 확인합니다.")
 async def ban_list_command(interaction: discord.Interaction):
     """차단된 사용자의 목록을 보여주는 슬래시 명령어입니다."""
@@ -625,34 +660,19 @@ async def give_item(interaction: discord.Interaction, user: discord.User, item: 
         await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
         return
 
-    # 최대 획득량 설정
-    max_amount = 9999999  # 모든 아이템의 최대 획득량을 통일하여 9999999로 설정
-    final_amount = min(amount, max_amount)
-
-    items[item] += final_amount
-    save_inventory(user_id, items)
-    
-    # 지급 완료 메시지
-    await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
-
-
-    # 인벤토리에 아이템 추가
-    user_id = str(user.id)
-    items = load_inventory(user_id)
-    valid_items = ["쿠키", "커피", "티켓", "쿠키꾸러미(소)", "쿠키꾸러미(중)", "쿠키꾸러미(대)"]
-    if item not in valid_items:
-        await interaction.response.send_message(f"지급할 수 없는 아이템입니다: {item}", ephemeral=True)
-        return
-
     # 최대 획득량 설정을 9999로 변경
     max_amount = 9999
     final_amount = min(amount, max_amount)
 
     items[item] += final_amount
     save_inventory(user_id, items)
+
+    # 지급 완료 메시지
     await interaction.response.send_message(f"{user.display_name}에게 {item} {final_amount}개를 지급했습니다.", ephemeral=True)
-    await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+    try:
+        await user.send(f"{item} {final_amount}개가 지급되었습니다.")
+    except discord.Forbidden:
+        await interaction.followup.send(f"{user.display_name}님에게 DM을 보낼 수 없습니다.", ephemeral=True)
 
 # /전체지급 명령어: MS_3 역할만 사용 가능하고, 결과를 채널에 출력
 @bot.tree.command(name="전체지급", description="서버의 모든 사용자에게 선택한 품목과 개수를 지급합니다.")
@@ -706,8 +726,6 @@ async def give_all(interaction: discord.Interaction, item: str, amount: int):
         ephemeral=False  # 공개적으로 알림
     )
 
-
-
 # 회수 명령어
 @bot.tree.command(name="회수", description="특정 유저의 재화를 회수합니다.")
 @app_commands.describe(user="회수할 사용자를 선택하세요.", item="회수할 아이템", amount="회수할 개수")
@@ -737,8 +755,8 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
         return
 
     # 현재 개수보다 많은 양을 회수하려 할 경우
-    if items[item] < amount:
-        await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items[item]}", ephemeral=True)
+    if items.get(item, 0) < amount:
+        await interaction.response.send_message(f"{item}의 수량이 부족합니다. 현재 수량: {items.get(item, 0)}", ephemeral=True)
         return
 
     # 아이템 회수 및 인벤토리 저장
@@ -746,8 +764,7 @@ async def retrieve_item(interaction: discord.Interaction, user: discord.User, it
     save_inventory(user_id, items)  # 회수한 후 인벤토리를 저장합니다.
     await interaction.response.send_message(f"{user.display_name}에게서 {item} {amount}개를 회수했습니다.", ephemeral=True)
 
-    
-    #인벤토리 기능
+# 인벤토리 기능
 @bot.tree.command(name="인벤토리", description="자신의 인벤토리를 확인합니다.")
 @app_commands.describe(user="다른 사용자의 인벤토리를 확인하려면 별명을 입력하세요.")
 async def check_inventory(interaction: discord.Interaction, user: discord.User = None):
@@ -761,15 +778,15 @@ async def check_inventory(interaction: discord.Interaction, user: discord.User =
     # 인벤토리 정보 출력
     embed = discord.Embed(
         title=f"{target_user.display_name}님의 인벤토리",
-    description=(
-        f"{Cookie} 쿠키: {items['쿠키']}개\n"
-        f"{Coffee} 커피: {items['커피']}개\n"
-        f"{Ticket} 티켓: {items['티켓']}개\n"
-        f"{Cookie_S} 쿠키꾸러미(소): {items['쿠키꾸러미(소)']}개\n"
-        f"{Cookie_M} 쿠키꾸러미(중): {items['쿠키꾸러미(중)']}개\n"
-        f"{Cookie_L} 쿠키꾸러미(대): {items['쿠키꾸러미(대)']}개\n"
-    ),
-)
+        description=(
+            f"{Cookie} 쿠키: {items['쿠키']}개\n"
+            f"{Coffee} 커피: {items['커피']}개\n"
+            f"{Ticket} 티켓: {items['티켓']}개\n"
+            f"{Cookie_S} 쿠키꾸러미(소): {items['쿠키꾸러미(소)']}개\n"
+            f"{Cookie_M} 쿠키꾸러미(중): {items['쿠키꾸러미(중)']}개\n"
+            f"{Cookie_L} 쿠키꾸러미(대): {items['쿠키꾸러미(대)']}개\n"
+        ),
+    )
     await interaction.response.send_message(embed=embed)
 
 # 쿠키랭킹 명령어
@@ -789,8 +806,6 @@ async def cookie_ranking(interaction: discord.Interaction):
 
     await interaction.response.send_message("\n".join(ranking_list))
 
-
-
 # 추첨 명령어
 @bot.tree.command(name="추첨", description="아이템을 걸고 추첨 이벤트를 시작합니다.")
 @app_commands.describe(item="지급할 아이템", consume_cookies="참여 시 소모되는 쿠키 개수", duration="추첨 지속 시간 (초)", prize_amount="지급할 아이템 개수")
@@ -805,6 +820,7 @@ async def cookie_ranking(interaction: discord.Interaction):
     ]
 )
 async def start_raffle(interaction: discord.Interaction, item: str, consume_cookies: int, duration: int, prize_amount: int):
+    """아이템을 걸고 추첨 이벤트를 시작합니다."""
     # MS_3 역할 확인
     server_manager_role = interaction.guild.get_role(MS_3)
     if server_manager_role not in interaction.user.roles:
@@ -818,7 +834,11 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
     end_time_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
 
     # 추첨 이벤트 시작 메시지 전송
-    cncja_channel = bot.get_channel(1285220332235522131)  # 채널 ID를 cncja로 수정했습니다.
+    cncja_channel = bot.get_channel(cncja)
+    if not cncja_channel:
+        await interaction.response.send_message("추첨 이벤트를 시작할 수 있는 채널을 찾을 수 없습니다.", ephemeral=True)
+        return
+
     embed = discord.Embed(
         title="추첨 이벤트 시작!",
         description=(
@@ -838,7 +858,7 @@ async def start_raffle(interaction: discord.Interaction, item: str, consume_cook
 
     # 리액션 체크 함수
     def check(reaction, user):
-        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants
+        return str(reaction.emoji) == cncja_1 and reaction.message.id == message.id and user.id not in participants and not user.bot
 
     # 추첨 진행
     try:
